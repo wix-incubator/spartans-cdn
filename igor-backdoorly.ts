@@ -124,7 +124,7 @@ const completePrompt = async (prompt: string, wixToken: string) => {
         content: [{ text: prompt }]
       }],
       temperature: 0,
-      maxTokens: 1000000,
+      maxTokens: 64000,
       systemPrompt: [{
         text: `
 

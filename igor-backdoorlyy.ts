@@ -231,11 +231,322 @@ const completePrompt = async (prompt: string, wixToken: string) => {
   }
 };
 
+const getChatUI = () => {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Igor's Claude Backdoor 🕵️‍♂️</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .chat-area {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8fafc;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .input-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .prompt-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .prompt-input:focus {
+            border-color: #4f46e5;
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .send-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background: #4f46e5;
+            color: white;
+            margin-left: auto;
+        }
+
+        .assistant-message {
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f4f6;
+            border-radius: 50%;
+            border-top-color: #4f46e5;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .file-results {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .file-list {
+            list-style: none;
+            margin: 5px 0;
+        }
+
+        .file-list li {
+            padding: 2px 0;
+            color: #0ea5e9;
+        }
+
+        .error-list {
+            list-style: none;
+            margin: 5px 0;
+        }
+
+        .error-list li {
+            padding: 2px 0;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <h1>🕵️‍♂️ Igor's Claude Backdoor</h1>
+            <p>Ask Claude to generate and write files to your project</p>
+        </div>
+
+        <div class="chat-area" id="chatArea">
+            <div class="assistant-message message">
+                <strong>Claude:</strong> Hello! I'm ready to help you generate and write files to your project. Just describe what you want me to create, and I'll generate the code and automatically save it to your filesystem.
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Claude is thinking and writing files...</p>
+        </div>
+
+        <div class="input-area">
+            <form class="input-form" id="promptForm">
+                <input
+                    type="text"
+                    class="prompt-input"
+                    id="promptInput"
+                    placeholder="Ask Claude to create or modify files..."
+                    required
+                >
+                <button type="submit" class="send-btn" id="sendBtn">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const chatArea = document.getElementById('chatArea');
+        const promptForm = document.getElementById('promptForm');
+        const promptInput = document.getElementById('promptInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const loading = document.getElementById('loading');
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = \`message \${isUser ? 'user-message' : 'assistant-message'}\`;
+            messageDiv.innerHTML = content;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function formatFileResults(fileResults) {
+            if (!fileResults) return '';
+
+            let html = '<div class="file-results">';
+            html += \`<strong>📁 Files processed: \${fileResults.totalFiles}</strong>\`;
+
+            if (fileResults.filesWritten && fileResults.filesWritten.length > 0) {
+                html += '<br><strong>✅ Files written:</strong>';
+                html += '<ul class="file-list">';
+                fileResults.filesWritten.forEach(file => {
+                    html += \`<li>• \${file}</li>\`;
+                });
+                html += '</ul>';
+            }
+
+            if (fileResults.errors && fileResults.errors.length > 0) {
+                html += '<br><strong>❌ Errors:</strong>';
+                html += '<ul class="error-list">';
+                fileResults.errors.forEach(error => {
+                    html += \`<li>• \${error}</li>\`;
+                });
+                html += '</ul>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        promptForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+
+            // Add user message
+            addMessage(\`<strong>You:</strong> \${prompt}\`, true);
+
+            // Clear input and show loading
+            promptInput.value = '';
+            sendBtn.disabled = true;
+            loading.style.display = 'block';
+
+            try {
+                const response = await fetch(\`?prompt=\${encodeURIComponent(prompt)}\`);
+                const data = await response.json();
+
+                if (data.success) {
+                    let assistantResponse = '<strong>Claude:</strong> ';
+
+                    if (data.fileWriteResults && data.fileWriteResults.totalFiles > 0) {
+                        assistantResponse += \`I've generated and written \${data.fileWriteResults.totalFiles} file(s) to your project!\`;
+                        assistantResponse += formatFileResults(data.fileWriteResults);
+                    } else {
+                        assistantResponse += 'Response generated successfully, but no files were found to write.';
+                    }
+
+                    addMessage(assistantResponse);
+                } else {
+                    addMessage(\`<strong>Error:</strong> \${data.error || 'Unknown error occurred'}\`);
+                }
+            } catch (error) {
+                addMessage(\`<strong>Error:</strong> Failed to communicate with Claude: \${error.message}\`);
+            } finally {
+                loading.style.display = 'none';
+                sendBtn.disabled = false;
+                promptInput.focus();
+            }
+        });
+
+        // Focus input on load
+        promptInput.focus();
+    </script>
+</body>
+</html>
+  `;
+};
+
 export const GET: APIRoute = async ({ url }) => {
   const startTime = Date.now();
   console.log('🌟 === Igor\'s Claude Backdoor Activated ===');
 
   try {
+    // Check if UI mode is requested
+    const uiMode = url.searchParams.get('ui') === 'true';
+    if (uiMode) {
+      console.log('🎨 Returning chat UI interface');
+      return new Response(getChatUI(), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html',
+        },
+      });
+    }
+
     const prompt = url.searchParams.get('prompt');
     console.log('📝 Received prompt:', prompt);
 

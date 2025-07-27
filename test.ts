@@ -13,7 +13,7 @@ export const GET = async ({ url }) => {
       },
     });
   } catch (error) {
-    console.error('❌ Even simple endpoint failed:', error);
+    console.error('Even simple endpoint failed:', error);
     return new Response(JSON.stringify({
       error: 'Simple endpoint failed',
       details: error instanceof Error ? error.message : 'Unknown error'

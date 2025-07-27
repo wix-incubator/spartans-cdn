@@ -4,7 +4,7 @@ export const GET = async ({ url }) => {
 
     return new Response(JSON.stringify({
       success: true,
-      message: 'Basic endpoint works!',
+      message: 'Basic endpoint works!!!!!!!!!11',
       timestamp: new Date().toISOString()
     }), {
       status: 200,

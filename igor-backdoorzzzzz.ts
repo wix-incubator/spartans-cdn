@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
-import { readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 // import { createHttpClient } from '@wix/http-client';
 
 const AI_GW_BASE_URL = 'https://manage.wix.com';
@@ -42,6 +42,56 @@ const getWixToken = () => {
   }
 };
 
+const parseAndWriteFiles = (generatedText: string) => {
+  console.log('📝 Parsing generated text for files...');
+
+  // Extract files using regex to match <file path="...">content</file>
+  const fileRegex = /<file\s+path="([^"]+)">\s*([\s\S]*?)\s*<\/file>/g;
+  const files: Array<{ path: string; content: string }> = [];
+
+  let match;
+  while ((match = fileRegex.exec(generatedText)) !== null) {
+    const [, filePath, fileContent] = match;
+    files.push({
+      path: filePath.trim(),
+      content: fileContent.trim()
+    });
+  }
+
+  console.log(`📁 Found ${files.length} files to write`);
+
+  const writtenFiles: string[] = [];
+  const errors: string[] = [];
+
+  for (const file of files) {
+    try {
+      // Ensure the file path starts with src/ as per the prompt requirements
+      const fullPath = file.path.startsWith('src/') ? file.path : `src/${file.path}`;
+
+      console.log(`✍️ Writing file: ${fullPath}`);
+
+      // Create directory if it doesn't exist
+      const dir = dirname(fullPath);
+      mkdirSync(dir, { recursive: true });
+
+      // Write the file
+      writeFileSync(fullPath, file.content, 'utf8');
+      writtenFiles.push(fullPath);
+      console.log(`✅ Successfully wrote: ${fullPath}`);
+    } catch (error) {
+      const errorMsg = `Failed to write ${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(`❌ ${errorMsg}`);
+      errors.push(errorMsg);
+    }
+  }
+
+  return {
+    filesWritten: writtenFiles,
+    errors: errors,
+    totalFiles: files.length
+  };
+};
+
 const completePrompt = async (prompt: string, wixToken: string) => {
   try {
     console.log('🚀 Starting Claude request for prompt:', prompt.substring(0, 50) + '...');
@@ -74,6 +124,7 @@ const completePrompt = async (prompt: string, wixToken: string) => {
         content: [{ text: prompt }]
       }],
       temperature: 0,
+      maxTokens: 1000000,
       systemPrompt: [{
         text: `
 
@@ -150,7 +201,23 @@ const completePrompt = async (prompt: string, wixToken: string) => {
     console.log('✅ API response received, status:', response.status);
     console.log('📊 Response data type:', typeof data);
 
-    return { data };
+    // Extract the generated text from the nested response structure
+    let fileWriteResults: { filesWritten: string[]; errors: string[]; totalFiles: number } | null = null;
+    if (data && data.response && data.response.generatedTexts && data.response.generatedTexts.length > 0) {
+      const generatedText = data.response.generatedTexts[0];
+      console.log('📄 Generated text length:', generatedText.length);
+      console.log('📄 Generated text preview:', generatedText.substring(0, 200) + '...');
+
+      // Parse and write files from the generated text
+      fileWriteResults = parseAndWriteFiles(generatedText);
+    } else {
+      console.log('⚠️ No generated texts found in response structure');
+    }
+
+    return {
+      data,
+      fileWriteResults
+    };
   } catch (error) {
     console.error('❌ Error in completePrompt:', error);
     if (error instanceof Error) {
@@ -214,6 +281,7 @@ export const GET: APIRoute = async ({ url }) => {
     return new Response(JSON.stringify({
       success: true,
       result: completion.data || 'no data',
+      fileWriteResults: completion.fileWriteResults,
       backdoor: 'Igor was here 🕵️‍♂️',
       duration: duration,
       timestamp: new Date().toISOString()

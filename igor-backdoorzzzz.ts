@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 // import { createHttpClient } from '@wix/http-client';
 
@@ -46,6 +46,27 @@ const completePrompt = async (prompt: string, wixToken: string) => {
   try {
     console.log('🚀 Starting Claude request for prompt:', prompt.substring(0, 50) + '...');
 
+    const importantFiles = [
+      'src/components/pages/HomePage.tsx',
+      'src/tailwind.config.mjs',
+    ]
+
+    const componentsPath = 'src/components/ui';
+
+    const components = readdirSync(componentsPath).map(file => {
+      return `
+        <file path="${componentsPath}/${file}" readOnly />
+      `;
+    }).join('\n\n---\n\n');
+
+    const files = importantFiles.map(file => {
+      return `
+        <file path="${file}">
+          the file content
+        </file>
+      `;
+    }).join('\n\n---\n\n');
+
     const claudeRequest = {
       model: 'CLAUDE_4_SONNET_1_0',
       messages: [{
@@ -54,7 +75,41 @@ const completePrompt = async (prompt: string, wixToken: string) => {
       }],
       temperature: 0,
       systemPrompt: [{
-        text: 'You are a helpful assistant that can help with code completion.',
+        text: `
+
+        You are the best programmer of a project written over Astro with React router and React components.
+
+        The user will give you a prompt and you must change the files in the project to achieve the user's goal.
+
+        These are components that you can use but not change:
+
+        ${components}
+
+        The current files in the project are:
+
+        ${files}
+
+        you must only change these files, and nothing else
+
+        Your output format must be the following and nothing more:
+
+        <file path="src/the/path/to/the/file">
+          the new file content
+        </file>
+        <file path="src/the/path/to/the/file">
+          the new file content
+        </file>
+        <file path="src/the/path/to/the/file">
+          the new file content
+        </file>
+
+        all files must be in the src folder
+
+        you may add new files.
+
+        if you fail to write the best code possible, you and I will be fired.
+
+        `,
       }],
     };
 

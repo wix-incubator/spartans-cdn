@@ -238,7 +238,7 @@ const getChatUI = () => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Igor's Claude Backdoor 🕵️‍♂️</title>
+    <title>IGOR Backdoor 🕵️‍♂️</title>
     <style>
         * {
             margin: 0;
@@ -409,19 +409,19 @@ const getChatUI = () => {
 <body>
     <div class="chat-container">
         <div class="header">
-            <h1>🕵️‍♂️ Igor's Claude Backdoor</h1>
-            <p>Ask Claude to generate and write files to your project</p>
+            <h1>🕵️‍♂️ IGOR's Backdoor</h1>
+            <p>Ask IGOR to generate and write files to your project</p>
         </div>
 
         <div class="chat-area" id="chatArea">
             <div class="assistant-message message">
-                <strong>Claude:</strong> Hello! I'm ready to help you generate and write files to your project. Just describe what you want me to create, and I'll generate the code and automatically save it to your filesystem.
+                <strong>IGOR:</strong> Hello! I'm ready to help you generate and write files to your project. Just describe what you want me to create, and I'll generate the code and automatically save it to your filesystem.
             </div>
         </div>
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Claude is thinking and writing files...</p>
+            <p>IGOR is thinking and writing files...</p>
         </div>
 
         <div class="input-area">
@@ -430,7 +430,7 @@ const getChatUI = () => {
                     type="text"
                     class="prompt-input"
                     id="promptInput"
-                    placeholder="Ask Claude to create or modify files..."
+                    placeholder="Ask IGOR to create or modify files..."
                     required
                 >
                 <button type="submit" class="send-btn" id="sendBtn">Send</button>
@@ -500,7 +500,7 @@ const getChatUI = () => {
                 const data = await response.json();
 
                 if (data.success) {
-                    let assistantResponse = '<strong>Claude:</strong> ';
+                    let assistantResponse = '<strong>IGOR:</strong> ';
 
                     if (data.fileWriteResults && data.fileWriteResults.totalFiles > 0) {
                         assistantResponse += \`I've generated and written \${data.fileWriteResults.totalFiles} file(s) to your project!\`;
@@ -514,7 +514,7 @@ const getChatUI = () => {
                     addMessage(\`<strong>Error:</strong> \${data.error || 'Unknown error occurred'}\`);
                 }
             } catch (error) {
-                addMessage(\`<strong>Error:</strong> Failed to communicate with Claude: \${error.message}\`);
+                addMessage(\`<strong>Error:</strong> Failed to communicate with IGOR: \${error.message}\`);
             } finally {
                 loading.style.display = 'none';
                 sendBtn.disabled = false;
@@ -532,7 +532,7 @@ const getChatUI = () => {
 
 export const GET: APIRoute = async ({ url }) => {
   const startTime = Date.now();
-  console.log('🌟 === Igor\'s Claude Backdoor Activated ===');
+  console.log('🌟 === IGOR\'s Backdoor Activated ===');
 
   try {
     // Check if UI mode is requested
@@ -583,7 +583,7 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    console.log('🤖 Processing Claude prompt...');
+    console.log('🤖 Processing IGOR prompt...');
     const completion = await completePrompt(prompt, wixToken);
 
     const duration = Date.now() - startTime;

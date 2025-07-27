@@ -94,6 +94,45 @@ const completePrompt = async (prompt: string, wixToken: string) => {
   }
 };
 
+// DEBUG VERSION - Just test token reading
+export const GET: APIRoute = async ({ url }) => {
+  try {
+    console.log('🐛 DEBUG: Testing token reading only');
+
+    const wixToken = getWixToken();
+
+    return new Response(JSON.stringify({
+      success: true,
+      debug: 'Token reading test',
+      hasToken: !!wixToken,
+      tokenLength: wixToken?.length || 0,
+      tokenPreview: wixToken ? `${wixToken.substring(0, 15)}...` : 'not found',
+      cwd: process.cwd(),
+      expectedPath: join(process.cwd(), '../root/.wix/auth/api-key.json'),
+      timestamp: new Date().toISOString()
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('🐛 DEBUG ERROR:', error);
+    return new Response(JSON.stringify({
+      error: 'Debug failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+};
+
+/*
+// ORIGINAL FULL VERSION - Commented out for debugging
 export const GET: APIRoute = async ({ url }) => {
   const startTime = Date.now();
   console.log('🌟 === New Claude request started ===');
@@ -193,3 +232,4 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 };
+*/

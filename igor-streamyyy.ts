@@ -2219,7 +2219,12 @@ export const GET: APIRoute = async ({ url }) => {
         const sendEvent = (event: string, data: any) => {
           const eventData = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
           console.log(`📡 Sending SSE event: ${event}`, data);
-          controller.enqueue(encoder.encode(eventData));
+
+          // Add padding to force immediate transmission through proxies/CDNs
+          const padding = ' '.repeat(1024); // 1KB of spaces
+          const paddedEventData = eventData + `: ${padding}\n\n`;
+
+          controller.enqueue(encoder.encode(paddedEventData));
         };
 
         // Start the streaming prompt processing

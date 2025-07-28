@@ -2252,6 +2252,9 @@ export const GET: APIRoute = async ({ url }) => {
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
+        // DISABLE COMPRESSION - This is likely the culprit!
+        'Content-Encoding': 'identity',
+        'Accept-Encoding': 'identity',
         // Force HTTP/1.1 for better SSE compatibility
         'HTTP-Version': 'HTTP/1.1',
         'Transfer-Encoding': 'chunked',

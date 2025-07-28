@@ -358,6 +358,8 @@ const getChatUI = () => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IGOR Code Generator</title>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -366,41 +368,35 @@ const getChatUI = () => {
         }
 
         body {
-            font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0d1117;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
             color: #e6edf3;
+            overflow: hidden;
         }
 
         .main-container {
             display: flex;
-            gap: 1px;
-            width: 98%;
-            max-width: 1600px;
-            height: 95vh;
-            border-radius: 8px;
+            height: 100vh;
             overflow: hidden;
-            border: 1px solid #30363d;
         }
 
         .chat-container {
             background: #161b22;
-            flex: 1;
+            width: 450px;
             min-width: 400px;
-            max-width: 600px;
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #30363d;
+            border-right: 1px solid #21262d;
         }
 
         .streaming-panel {
             background: #0d1117;
             flex: 1;
-            min-width: 400px;
+            height: 100vh;
             display: flex;
             flex-direction: column;
         }
@@ -408,23 +404,34 @@ const getChatUI = () => {
         .streaming-panel-header {
             background: #21262d;
             color: #e6edf3;
-            padding: 12px 16px;
+            padding: 14px 16px;
             border-bottom: 1px solid #30363d;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: space-between;
+            min-height: 48px;
+            box-sizing: border-box;
+        }
+
+        .streaming-panel-header .header-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2px;
         }
 
         .streaming-panel-header h2 {
-            font-size: 14px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 500;
             margin: 0;
+            color: #f0f6fc;
         }
 
-        .streaming-panel-header p {
-            opacity: 0.7;
-            font-size: 12px;
+        .streaming-panel-header .subtitle {
+            opacity: 0.6;
+            font-size: 11px;
             margin: 0;
+            color: #8b949e;
         }
 
         .streaming-content {
@@ -432,28 +439,75 @@ const getChatUI = () => {
             padding: 16px;
             overflow-y: auto;
             background: #0d1117;
+            /* Account for the input area height in chat panel */
+            height: calc(100vh - 48px - 80px);
         }
 
         .header {
             background: #21262d;
             color: #e6edf3;
-            padding: 12px 16px;
+            padding: 14px 16px;
             border-bottom: 1px solid #30363d;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: space-between;
+            min-height: 48px;
+            box-sizing: border-box;
+        }
+
+        .header .header-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2px;
         }
 
         .header h1 {
-            font-size: 14px;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 500;
             margin: 0;
+            color: #f0f6fc;
         }
 
-        .header p {
-            opacity: 0.7;
-            font-size: 12px;
+        .header .subtitle {
+            opacity: 0.6;
+            font-size: 11px;
             margin: 0;
+            color: #8b949e;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #238636;
+        }
+
+        .status-text {
+            font-size: 11px;
+            color: #7d8590;
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-count {
+            font-size: 11px;
+            color: #7d8590;
+            padding: 2px 8px;
+            background: #21262d;
+            border-radius: 12px;
+            border: 1px solid #30363d;
         }
 
         .chat-area {
@@ -464,32 +518,35 @@ const getChatUI = () => {
         }
 
         .input-area {
-            padding: 12px 16px;
+            padding: 16px;
             background: #21262d;
             border-top: 1px solid #30363d;
+            min-height: 80px;
+            box-sizing: border-box;
         }
 
         .input-form {
             display: flex;
-            gap: 8px;
+            gap: 12px;
+            align-items: center;
         }
 
         .prompt-input {
             flex: 1;
-            padding: 8px 12px;
+            padding: 10px 12px;
             border: 1px solid #30363d;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             background: #0d1117;
             color: #e6edf3;
             outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s;
             font-family: inherit;
         }
 
         .prompt-input:focus {
             border-color: #58a6ff;
-            box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.1);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
         }
 
         .prompt-input::placeholder {
@@ -497,72 +554,86 @@ const getChatUI = () => {
         }
 
         .send-btn {
-            padding: 8px 16px;
+            padding: 10px 16px;
             background: #238636;
             color: #ffffff;
             border: none;
             border-radius: 6px;
             font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.2s;
-            font-size: 14px;
+            transition: all 0.2s;
+            font-size: 13px;
             font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
-        .send-btn:hover {
+        .send-btn:hover:not(:disabled) {
             background: #2ea043;
+            transform: translateY(-1px);
         }
 
         .send-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
             background: #238636;
+            transform: none;
         }
 
         .message {
-            margin-bottom: 12px;
-            padding: 12px;
+            margin-bottom: 16px;
+            padding: 12px 16px;
             border-radius: 6px;
-            max-width: 85%;
-            font-size: 14px;
+            max-width: 90%;
+            font-size: 13px;
             line-height: 1.5;
+            border: 1px solid #30363d;
         }
 
         .user-message {
-            background: #1f2937;
+            background: #0d2818;
             color: #e6edf3;
             margin-left: auto;
-            border: 1px solid #374151;
+            border-color: #238636;
         }
 
         .assistant-message {
             background: #21262d;
             color: #e6edf3;
-            border: 1px solid #30363d;
+            border-color: #30363d;
         }
 
         .claude-message {
-            background: #0d2818;
-            border: 1px solid #238636;
+            background: #1c2128;
+            border: 1px solid #373e47;
             color: #e6edf3;
-            margin: 12px 0;
+            margin: 16px 0;
             position: relative;
+            border-left: 3px solid #58a6ff;
         }
 
-        .claude-message::before {
-            content: "🤖";
-            position: absolute;
-            top: -6px;
-            left: 12px;
-            background: #238636;
-            color: white;
-            border-radius: 4px;
-            width: 20px;
-            height: 16px;
+        .message-header {
             display: flex;
             align-items: center;
-            justify-content: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-weight: 500;
+            font-size: 12px;
+            color: #f0f6fc;
+        }
+
+        .message-content {
+            font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .message-time {
             font-size: 10px;
+            color: #7d8590;
+            opacity: 0.8;
+            margin-left: auto;
         }
 
         .loading {
@@ -616,83 +687,88 @@ const getChatUI = () => {
         }
 
         .streaming-container {
-            padding: 12px;
+            margin: 0 0 16px 0;
             background: #161b22;
             border: 1px solid #30363d;
-            border-radius: 6px;
+            border-radius: 8px;
             font-family: inherit;
-            margin-bottom: 12px;
+            overflow: hidden;
         }
 
         .current-file {
             background: #21262d;
             color: #e6edf3;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 12px;
-            border-left: 3px solid #58a6ff;
+            border-bottom: 1px solid #30363d;
         }
 
         .file-header {
-            color: #58a6ff;
-            font-weight: 600;
-            margin-bottom: 8px;
+            color: #f0f6fc;
+            font-weight: 500;
+            padding: 12px 16px;
+            background: #30363d;
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 13px;
+            font-size: 12px;
+            border-bottom: 1px solid #21262d;
         }
 
         .file-content {
             background: #0d1117;
             color: #e6edf3;
-            padding: 12px;
-            border-radius: 6px;
+            padding: 16px;
             white-space: pre-wrap;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
             font-size: 12px;
             line-height: 1.4;
-            border: 1px solid #30363d;
+            font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
         }
 
         .status-message {
-            padding: 6px 10px;
-            background: #0d2818;
-            border: 1px solid #238636;
-            border-radius: 4px;
-            color: #2ea043;
-            margin-bottom: 6px;
+            padding: 8px 16px;
+            background: #21262d;
+            border-bottom: 1px solid #30363d;
+            color: #58a6ff;
             font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .completed-files {
-            margin-top: 12px;
-            padding: 12px;
-            background: #0d2818;
-            border: 1px solid #238636;
-            border-radius: 6px;
-        }
-
-        .completed-files h4 {
-            color: #2ea043;
-            margin-bottom: 8px;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .completed-file-item {
-            margin-bottom: 6px;
+            margin: 0 0 16px 0;
+            background: #161b22;
             border: 1px solid #30363d;
-            border-radius: 6px;
-            background: #21262d;
+            border-radius: 8px;
             overflow: hidden;
         }
 
-        .completed-file-header {
-            padding: 10px 12px;
+        .completed-files h4 {
+            color: #f0f6fc;
+            margin: 0;
+            padding: 12px 16px;
+            font-size: 12px;
+            font-weight: 500;
             background: #21262d;
             border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .completed-file-item {
+            border-bottom: 1px solid #30363d;
+            background: #161b22;
+        }
+
+        .completed-file-item:last-child {
+            border-bottom: none;
+        }
+
+        .completed-file-header {
+            padding: 12px 16px;
+            background: #161b22;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -701,25 +777,25 @@ const getChatUI = () => {
         }
 
         .completed-file-header:hover {
-            background: #30363d;
+            background: #21262d;
         }
 
         .completed-file-info {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }
 
         .completed-file-path {
             color: #58a6ff;
             font-weight: 500;
             font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         .completed-file-toggle {
             color: #7d8590;
             font-size: 12px;
-            font-weight: bold;
             transition: transform 0.2s;
         }
 
@@ -734,15 +810,15 @@ const getChatUI = () => {
         }
 
         .completed-file-content.expanded {
-            max-height: 400px;
+            max-height: 500px;
             overflow-y: auto;
         }
 
         .completed-file-code {
             background: #0d1117;
             color: #e6edf3;
-            padding: 12px;
-            font-family: inherit;
+            padding: 16px;
+            font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
             font-size: 12px;
             line-height: 1.4;
             white-space: pre-wrap;
@@ -888,19 +964,29 @@ const getChatUI = () => {
     <div class="main-container">
         <div class="chat-container">
             <div class="header">
-                <h1>🤖 IGOR Code Generator</h1>
-                <p>AI-powered file generation and code editing</p>
+                <div class="header-info">
+                    <h1>IGOR Code Generator</h1>
+                    <span class="subtitle">AI-powered file generation and code editing</span>
+                </div>
+                <div class="header-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Ready</span>
+                </div>
             </div>
 
             <div class="chat-area" id="chatArea">
                 <div class="assistant-message message">
-                    <strong>IGOR:</strong> Code generator ready. Describe the components, pages, or features you want to create and I'll generate the implementation files automatically.
+                    <div class="message-header">
+                        <span>IGOR</span>
+                        <span class="message-time">Ready</span>
+                    </div>
+                    <div class="message-content">Code generator ready. Describe the components, pages, or features you want to create and I'll generate the implementation files automatically.</div>
                 </div>
             </div>
 
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <p>IGOR is thinking and writing files...</p>
+                <p>Generating code and writing files...</p>
             </div>
 
             <div class="input-area">
@@ -912,20 +998,31 @@ const getChatUI = () => {
                         placeholder="Describe components, pages, or features to generate..."
                         required
                     >
-                    <button type="submit" class="send-btn" id="sendBtn">Send</button>
+                    <button type="submit" class="send-btn" id="sendBtn">
+                        <span>Generate</span>
+                    </button>
                 </form>
             </div>
         </div>
 
         <div class="streaming-panel">
             <div class="streaming-panel-header">
-                <h2>📄 Live Output</h2>
-                <p>Real-time code generation and file creation</p>
+                <div class="header-info">
+                    <h2>Live Output</h2>
+                    <span class="subtitle">Real-time code generation and file creation</span>
+                </div>
+                <div class="header-actions">
+                    <span class="file-count">0 files</span>
+                </div>
             </div>
 
             <div class="streaming-content" id="streamingContent">
                 <div class="assistant-message message">
-                    <strong>Status:</strong> Awaiting generation request. Real-time output will appear here.
+                    <div class="message-header">
+                        <span>System</span>
+                        <span class="message-time">Idle</span>
+                    </div>
+                    <div class="message-content">Awaiting generation request. Real-time output will appear here.</div>
                 </div>
             </div>
         </div>
@@ -942,10 +1039,24 @@ const getChatUI = () => {
         let streamingContainer = null;
         let completedFiles = [];
 
-        function addMessage(content, isUser = false) {
+        function addMessage(content, isUser = false, sender = 'IGOR') {
             const messageDiv = document.createElement('div');
             messageDiv.className = \`message \${isUser ? 'user-message' : 'assistant-message'}\`;
-            messageDiv.innerHTML = content;
+
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            messageDiv.innerHTML = \`
+                <div class="message-header">
+                    <span>\${isUser ? 'You' : sender}</span>
+                    <span class="message-time">\${time}</span>
+                </div>
+                <div class="message-content">\${content}</div>
+            \`;
+
             chatArea.appendChild(messageDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -959,22 +1070,21 @@ const getChatUI = () => {
             streamingContent.innerHTML = '';
 
             streamingContainer = document.createElement('div');
-            streamingContainer.innerHTML = \`
-                <div class="streaming-container">
-                    <div id="statusMessage" class="status-message">🔍 Initializing...</div>
-                    <div id="currentFile" class="current-file" style="display: none;">
-                        <div class="file-header">
-                            <span id="fileIcon">📝</span>
-                            <span id="fileName">Waiting...</span>
+                                streamingContainer.innerHTML = \`
+                        <div class="streaming-container">
+                            <div id="statusMessage" class="status-message">Initializing...</div>
+                            <div id="currentFile" class="current-file" style="display: none;">
+                                <div class="file-header">
+                                    <span id="fileName">Waiting...</span>
+                                </div>
+                                <div id="fileContent" class="file-content"></div>
+                            </div>
+                            <div id="completedFiles" class="completed-files" style="display: none;">
+                                <h4>Completed Files (<span id="completedCount">0</span>)</h4>
+                                <div id="completedFilesList"></div>
+                            </div>
                         </div>
-                        <div id="fileContent" class="file-content"></div>
-                    </div>
-                    <div id="completedFiles" class="completed-files" style="display: none;">
-                        <h4>✅ Completed Files (<span id="completedCount">0</span>)</h4>
-                        <div id="completedFilesList"></div>
-                    </div>
-                </div>
-            \`;
+                    \`;
             streamingContent.appendChild(streamingContainer);
         }
 
@@ -988,7 +1098,21 @@ const getChatUI = () => {
         function addClaudeMessage(message) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message claude-message';
-            messageDiv.innerHTML = \`<strong>IGOR:</strong> \${escapeHtml(message)}\`;
+
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            messageDiv.innerHTML = \`
+                <div class="message-header">
+                    <span>IGOR</span>
+                    <span class="message-time">\${time}</span>
+                </div>
+                <div class="message-content">\${escapeHtml(message)}</div>
+            \`;
+
             chatArea.appendChild(messageDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -998,19 +1122,29 @@ const getChatUI = () => {
             systemPromptDiv.className = 'message assistant-message';
 
             const promptId = 'system-prompt-' + Date.now();
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
 
             systemPromptDiv.innerHTML = \`
-                <strong>IGOR:</strong> System prompt prepared
-                <div class="system-prompt-container">
-                    <div class="system-prompt-header" onclick="toggleSystemPrompt('\${promptId}')">
-                        <div class="system-prompt-title">
-                            <span>📋</span>
-                            <span>System Prompt</span>
+                <div class="message-header">
+                    <span>System</span>
+                    <span class="message-time">\${time}</span>
+                </div>
+                <div class="message-content">
+                    System prompt prepared
+                    <div class="system-prompt-container">
+                        <div class="system-prompt-header" onclick="toggleSystemPrompt('\${promptId}')">
+                            <div class="system-prompt-title">
+                                <span>System Prompt</span>
+                            </div>
+                            <span class="system-prompt-toggle" id="toggle-\${promptId}">▶</span>
                         </div>
-                        <span class="system-prompt-toggle" id="toggle-\${promptId}">▶</span>
-                    </div>
-                    <div class="system-prompt-content" id="content-\${promptId}">
-                        <pre class="system-prompt-text">\${escapeHtml(prompt)}</pre>
+                        <div class="system-prompt-content" id="content-\${promptId}">
+                            <pre class="system-prompt-text">\${escapeHtml(prompt)}</pre>
+                        </div>
                     </div>
                 </div>
             \`;
@@ -1041,15 +1175,13 @@ const getChatUI = () => {
         // Make toggleSystemPrompt globally accessible
         window.toggleSystemPrompt = toggleSystemPrompt;
 
-        function showCurrentFile(path, icon = '📝') {
+        function showCurrentFile(path) {
             const currentFileDiv = document.getElementById('currentFile');
-            const fileIcon = document.getElementById('fileIcon');
             const fileName = document.getElementById('fileName');
             const fileContent = document.getElementById('fileContent');
 
             if (currentFileDiv && fileName && fileContent) {
                 currentFileDiv.style.display = 'block';
-                if (fileIcon) fileIcon.textContent = icon;
                 fileName.textContent = path;
                 fileContent.textContent = '';
             }
@@ -1095,7 +1227,8 @@ const getChatUI = () => {
                 infoDiv.className = 'completed-file-info';
 
                 const checkSpan = document.createElement('span');
-                checkSpan.textContent = '✅';
+                checkSpan.textContent = '●';
+                checkSpan.style.color = '#238636';
 
                 const pathSpan = document.createElement('span');
                 pathSpan.className = 'completed-file-path';
@@ -1294,7 +1427,7 @@ const getChatUI = () => {
             if (!prompt) return;
 
             // Add user message
-            addMessage(\`<strong>You:</strong> \${prompt}\`, true);
+            addMessage(prompt, true);
 
             // Clear input and show loading
             promptInput.value = '';
@@ -1302,7 +1435,7 @@ const getChatUI = () => {
             loading.style.display = 'block';
 
             // Add initial message to chat
-            addMessage(\`<strong>IGOR:</strong> 🚀 Starting file generation for your request. Check the right panel for real-time progress!\`);
+            addMessage('Starting file generation for your request. Check the right panel for real-time progress!');
 
             // Use streaming by default
             handleStreaming(prompt);

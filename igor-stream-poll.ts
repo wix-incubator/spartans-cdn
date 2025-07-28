@@ -2121,7 +2121,7 @@ const getChatUI = () => {
                                 loading.style.display = 'none';
                                 promptInput.focus();
                             });
-                    }, 100); // Poll every 2 seconds
+                    }, 10); // Poll every 2 seconds
                 })
                 .catch(error => {
                     console.error('Generation start error:', error);

@@ -2248,10 +2248,20 @@ export const GET: APIRoute = async ({ url }) => {
       status: 200,
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
+        // Force HTTP/1.1 for better SSE compatibility
+        'HTTP-Version': 'HTTP/1.1',
+        'Transfer-Encoding': 'chunked',
+        // Disable HTTP/2 server push
+        'X-Accel-Buffering': 'no',
+        // Nginx specific - disable buffering
+        'X-Nginx-Buffering': 'no',
+        // Additional headers for better streaming
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (error) {

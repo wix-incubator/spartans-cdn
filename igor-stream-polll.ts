@@ -1584,6 +1584,7 @@ const getChatUI = () => {
         let streamingContainer = null;
         let completedFiles = [];
         let logEntries = [];
+        let activePollingTimeout = null;
 
         function addMessage(content, isUser = false, sender = 'IGOR') {
             const messageDiv = document.createElement('div');
@@ -2046,6 +2047,13 @@ const getChatUI = () => {
         }
 
         function handleStreaming(prompt) {
+            // Cancel any existing polling
+            if (activePollingTimeout) {
+                clearTimeout(activePollingTimeout);
+                activePollingTimeout = null;
+                console.log('Cancelled existing polling operation');
+            }
+
             createStreamingContainer();
             completedFiles = [];
             logEntries = [];
@@ -2083,14 +2091,40 @@ const getChatUI = () => {
 
                     const generationId = data.generationId;
                     let processedEventCount = 0;
+                    let retryCount = 0;
+                    let pollInterval = 1000; // Start with 1 second
+                    const maxRetries = 10;
+                    const maxPollInterval = 5000; // Max 5 seconds between polls
+                    const startTime = Date.now();
+                    const maxGenerationTime = 10 * 60 * 1000; // 10 minutes max
 
-                    // Poll for updates
-                    const pollInterval = setInterval(() => {
+                    // Poll for updates with exponential backoff
+                    const poll = () => {
+                        // Check if we've exceeded maximum generation time
+                        if (Date.now() - startTime > maxGenerationTime) {
+                            console.log('Generation timeout reached');
+                            activePollingTimeout = null; // Clear the reference
+                            updateStatus('<i data-lucide="clock"></i> Generation timeout. Please try again.');
+                            sendBtn.disabled = false;
+                            loading.style.display = 'none';
+                            promptInput.focus();
+                            return;
+                        }
+
                         fetch(\`?poll=\${generationId}\`)
-                            .then(response => response.json())
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+                                }
+                                return response.json();
+                            })
                             .then(pollData => {
+                                // Reset retry count on successful response
+                                retryCount = 0;
+                                pollInterval = 1000; // Reset to 1 second on success
+
                                 if (pollData.error) {
-                                    clearInterval(pollInterval);
+                                    activePollingTimeout = null; // Clear the reference
                                     updateStatus(\`<i data-lucide="x-circle"></i> Error: \${pollData.error}\`);
                                     sendBtn.disabled = false;
                                     loading.style.display = 'none';
@@ -2107,24 +2141,54 @@ const getChatUI = () => {
 
                                 // Check if generation is complete
                                 if (pollData.status === 'completed' || pollData.status === 'error') {
-                                    clearInterval(pollInterval);
+                                    activePollingTimeout = null; // Clear the reference
                                     sendBtn.disabled = false;
                                     loading.style.display = 'none';
                                     promptInput.focus();
+                                    return;
                                 }
+
+                                // Schedule next poll
+                                activePollingTimeout = setTimeout(poll, pollInterval);
                             })
                             .catch(error => {
                                 console.error('Polling error:', error);
-                                clearInterval(pollInterval);
-                                updateStatus('<i data-lucide="wifi-off"></i> Connection lost. Please try again.');
-                                sendBtn.disabled = false;
-                                loading.style.display = 'none';
-                                promptInput.focus();
+                                retryCount++;
+
+                                // If we've exceeded max retries, give up
+                                if (retryCount >= maxRetries) {
+                                    console.log(\`Max retries (\${maxRetries}) reached, stopping polling\`);
+                                    activePollingTimeout = null; // Clear the reference
+                                    updateStatus('<i data-lucide="wifi-off"></i> Connection failed after multiple retries. Please try again.');
+                                    sendBtn.disabled = false;
+                                    loading.style.display = 'none';
+                                    promptInput.focus();
+                                    return;
+                                }
+
+                                // Exponential backoff with jitter
+                                pollInterval = Math.min(
+                                    pollInterval * 1.5 + Math.random() * 1000,
+                                    maxPollInterval
+                                );
+
+                                console.log(\`Retry \${retryCount}/\${maxRetries} in \${Math.round(pollInterval)}ms\`);
+                                updateStatus(\`<i data-lucide="wifi-off"></i> Connection error (retry \${retryCount}/\${maxRetries})...\`);
+
+                                // Schedule retry
+                                activePollingTimeout = setTimeout(poll, pollInterval);
                             });
-                    }, 10); // Poll every 2 seconds
+                    };
+
+                    // Start polling
+                    poll();
                 })
                 .catch(error => {
                     console.error('Generation start error:', error);
+                    if (activePollingTimeout) {
+                        clearTimeout(activePollingTimeout);
+                        activePollingTimeout = null;
+                    }
                     updateStatus('<i data-lucide="x-circle"></i> Failed to start generation.');
                     sendBtn.disabled = false;
                     loading.style.display = 'none';

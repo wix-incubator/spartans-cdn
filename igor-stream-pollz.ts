@@ -813,24 +813,6 @@ const getChatUI = () => {
             51%, 100% { opacity: 0; }
         }
 
-        /* Typing animation cursor */
-        .typing-cursor {
-            color: #58a6ff;
-            animation: typing-blink 1s infinite;
-            font-weight: bold;
-            margin-left: 1px;
-        }
-
-        @keyframes typing-blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0.3; }
-        }
-
-        /* Typing active state for smoother transitions */
-        .typing-active {
-            position: relative;
-        }
-
         .message-header {
             display: flex;
             align-items: center;
@@ -1603,7 +1585,6 @@ const getChatUI = () => {
         let completedFiles = [];
         let logEntries = [];
         let activePollingTimeout = null;
-        let activeTypingAnimations = new Map(); // Track active typing animations
 
         function addMessage(content, isUser = false, sender = 'IGOR') {
             const messageDiv = document.createElement('div');
@@ -1684,11 +1665,6 @@ const getChatUI = () => {
 
             // If there's a streaming message, replace it with the final message
             if (currentStreamingMessage) {
-                // Cancel any ongoing typing animation for the streaming message
-                const streamingContent = currentStreamingMessage.querySelector('.message-content');
-                if (streamingContent) {
-                    cancelTypingAnimation(streamingContent);
-                }
                 currentStreamingMessage.remove();
                 currentStreamingMessage = null;
             }
@@ -1713,28 +1689,12 @@ const getChatUI = () => {
                     <span>IGOR</span>
                     <span class="message-time">\${time}</span>
                 </div>
-                <div class="message-content"></div>
+                <div class="message-content">\${marked.parse(message)}</div>
             \`;
 
             chatArea.appendChild(messageDiv);
-
-            // Start typing animation for the final message
-            const contentDiv = messageDiv.querySelector('.message-content');
-            if (contentDiv) {
-                createTypingAnimation(contentDiv, message, 1000, true);
-
-                // Auto-scroll chat during typing
-                const scrollInterval = setInterval(() => {
-                    if (contentDiv.classList.contains('typing-active')) {
-                        chatArea.scrollTop = chatArea.scrollHeight;
-                    } else {
-                        clearInterval(scrollInterval);
-                    }
-                }, 200);
-            }
-
             chatArea.scrollTop = chatArea.scrollHeight;
-            console.log('✅ Claude message added to DOM with typing animation');
+            console.log('✅ Claude message added to DOM');
         }
 
         function addOrUpdateStreamingMessage(message, isPartial) {
@@ -1762,42 +1722,17 @@ const getChatUI = () => {
                         <span>IGOR</span>
                         <span class="message-time">\${time} \${isPartial ? '(streaming...)' : ''}</span>
                     </div>
-                    <div class="message-content"></div>
+                    <div class="message-content">\${marked.parse(message)}</div>
                 \`;
 
                 chatArea.appendChild(currentStreamingMessage);
-
-                // Start typing animation for new message
-                const contentDiv = currentStreamingMessage.querySelector('.message-content');
-                if (contentDiv) {
-                    createTypingAnimation(contentDiv, message, 800, true);
-
-                    // Auto-scroll chat during typing
-                    const scrollInterval = setInterval(() => {
-                        if (contentDiv.classList.contains('typing-active')) {
-                            chatArea.scrollTop = chatArea.scrollHeight;
-                        } else {
-                            clearInterval(scrollInterval);
-                        }
-                    }, 200);
-                }
             } else {
-                // Update existing streaming message with typing animation
+                // Update existing streaming message
                 const contentDiv = currentStreamingMessage.querySelector('.message-content');
                 const timeSpan = currentStreamingMessage.querySelector('.message-time');
 
                 if (contentDiv) {
-                    // Use typing animation for updates too
-                    createTypingAnimation(contentDiv, message, 600, true);
-
-                    // Auto-scroll chat during typing
-                    const scrollInterval = setInterval(() => {
-                        if (contentDiv.classList.contains('typing-active')) {
-                            chatArea.scrollTop = chatArea.scrollHeight;
-                        } else {
-                            clearInterval(scrollInterval);
-                        }
-                    }, 200);
+                    contentDiv.innerHTML = marked.parse(message);
                 }
                 if (timeSpan && isPartial) {
                     const time = new Date().toLocaleTimeString('en-US', {
@@ -1979,20 +1914,12 @@ const getChatUI = () => {
             }
         }
 
-                function updateFileContent(content) {
+        function updateFileContent(content) {
             const fileContent = document.getElementById('fileContent');
             if (fileContent) {
-                // Use typing animation for file content updates
-                createTypingAnimation(fileContent, content, 800, false);
-
-                // Auto-scroll during typing animation
-                const scrollInterval = setInterval(() => {
-                    if (fileContent.classList.contains('typing-active')) {
-                        fileContent.scrollTop = fileContent.scrollHeight;
-                    } else {
-                        clearInterval(scrollInterval);
-                    }
-                }, 100);
+                fileContent.textContent = content;
+                // Auto-scroll to bottom of content
+                fileContent.scrollTop = fileContent.scrollHeight;
             }
         }
 
@@ -2091,105 +2018,6 @@ const getChatUI = () => {
         // Make toggleFileContent globally accessible
         window.toggleFileContent = toggleFileContent;
 
-                // Typing animation system
-        function createTypingAnimation(element, targetText, duration = 1000, isMarkdown = false) {
-            const animationId = Math.random().toString(36).substring(2);
-
-            // Cancel any existing animation for this element
-            if (activeTypingAnimations.has(element)) {
-                const existingAnimation = activeTypingAnimations.get(element);
-                clearTimeout(existingAnimation.timeout);
-                activeTypingAnimations.delete(element);
-            }
-
-            // If target text is empty, just clear the element
-            if (!targetText || targetText.trim() === '') {
-                if (isMarkdown) {
-                    element.innerHTML = '';
-                } else {
-                    element.textContent = '';
-                }
-                // Remove typing indicator
-                element.classList.remove('typing-active');
-                return;
-            }
-
-            // Add typing indicator class
-            element.classList.add('typing-active');
-
-                        let currentIndex = 0;
-            const chars = targetText.split('');
-            const baseCharDelay = Math.max(5, duration / chars.length); // Minimum 5ms per character
-
-            const typeNextChar = () => {
-                if (currentIndex < chars.length) {
-                    const currentText = targetText.substring(0, currentIndex + 1);
-
-                    if (isMarkdown) {
-                        // For markdown, we need to parse and render incrementally
-                        // Add a typing cursor during animation
-                        element.innerHTML = marked.parse(currentText) + '<span class="typing-cursor">▋</span>';
-                    } else {
-                        // For plain text, add cursor
-                        element.innerHTML = escapeHtml(currentText) + '<span class="typing-cursor">▋</span>';
-                    }
-
-                    currentIndex++;
-
-                    // Add some natural variation to typing speed
-                    const currentChar = chars[currentIndex - 1];
-                    let charDelay = baseCharDelay;
-
-                    // Pause longer after punctuation for more natural feel
-                    if (currentChar === '.' || currentChar === '!' || currentChar === '?') {
-                        charDelay *= 2;
-                    } else if (currentChar === ',' || currentChar === ';' || currentChar === ':') {
-                        charDelay *= 1.5;
-                    } else if (currentChar === ' ') {
-                        charDelay *= 0.8; // Type spaces a bit faster
-                    }
-
-                    // Add slight random variation (±20%)
-                    charDelay *= (0.8 + Math.random() * 0.4);
-
-                    const timeout = setTimeout(typeNextChar, charDelay);
-                    activeTypingAnimations.set(element, { timeout, animationId });
-                } else {
-                    // Animation complete - remove cursor and set final content
-                    element.classList.remove('typing-active');
-
-                    if (isMarkdown) {
-                        element.innerHTML = marked.parse(targetText);
-                    } else {
-                        element.textContent = targetText;
-                    }
-
-                    activeTypingAnimations.delete(element);
-                }
-            };
-
-            // Start the animation
-            typeNextChar();
-            return animationId;
-        }
-
-        function cancelTypingAnimation(element) {
-            if (activeTypingAnimations.has(element)) {
-                const animation = activeTypingAnimations.get(element);
-                clearTimeout(animation.timeout);
-                activeTypingAnimations.delete(element);
-
-                // Clean up typing state
-                element.classList.remove('typing-active');
-
-                // Remove any typing cursor that might be present
-                const cursor = element.querySelector('.typing-cursor');
-                if (cursor) {
-                    cursor.remove();
-                }
-            }
-        }
-
         function formatFileResults(fileResults) {
             if (!fileResults) return '';
 
@@ -2225,13 +2053,6 @@ const getChatUI = () => {
                 activePollingTimeout = null;
                 console.log('Cancelled existing polling operation');
             }
-
-            // Cancel all active typing animations
-            for (const [element, animation] of activeTypingAnimations) {
-                clearTimeout(animation.timeout);
-            }
-            activeTypingAnimations.clear();
-            console.log('Cancelled all active typing animations');
 
             createStreamingContainer();
             completedFiles = [];
@@ -2271,7 +2092,7 @@ const getChatUI = () => {
                     const generationId = data.generationId;
                     let processedEventCount = 0;
                     let retryCount = 0;
-                    let pollInterval = 1000; // Start with 1 second
+                    let pollInterval = 200; // Start with 1 second
                     const maxRetries = 10;
                     const maxPollInterval = 5000; // Max 5 seconds between polls
                     const startTime = Date.now();

@@ -1444,41 +1444,126 @@ const getChatUI = () => {
             white-space: pre-wrap;
         }
 
+        /* Mobile tab system */
+        .mobile-tabs {
+            display: none;
+            background: #21262d;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .tab-buttons {
+            display: flex;
+            width: 100%;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px 16px;
+            background: #161b22;
+            color: #7d8590;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .tab-badge {
+            background: #f85149;
+            color: #ffffff;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 16px;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        .tab-button.active {
+            background: #21262d;
+            color: #e6edf3;
+            border-bottom-color: #58a6ff;
+        }
+
+        .tab-button:hover:not(.active) {
+            background: #21262d;
+            color: #e6edf3;
+        }
+
         /* Responsive design */
         @media (max-width: 1024px) {
             .main-container {
                 flex-direction: column;
-                height: auto;
-                min-height: 90vh;
-                gap: 1px;
+                height: 100vh;
             }
 
             .chat-container, .streaming-panel {
-                max-width: none;
-                min-width: 300px;
+                width: 100%;
+                min-width: unset;
                 border-right: none;
                 border-bottom: 1px solid #30363d;
             }
 
+            .chat-container {
+                flex: 1;
+                min-height: 50vh;
+            }
+
             .streaming-panel {
-                min-height: 300px;
+                flex: 1;
+                min-height: 50vh;
                 border-bottom: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .mobile-tabs {
+                display: block;
+            }
+
+            .main-container {
+                flex-direction: column;
+                height: 100vh;
+            }
+
+            .chat-container, .streaming-panel {
+                width: 100%;
+                height: calc(100vh - 50px); /* Subtract tab height */
+                border-bottom: none;
+                border-right: none;
+            }
+
+            .chat-container.hidden, .streaming-panel.hidden {
+                display: none;
+            }
+
+            .streaming-content {
+                height: calc(100vh - 50px - 48px); /* Subtract tab height and header */
+                padding: 12px;
+            }
+
+            .chat-area {
+                height: calc(100vh - 50px - 48px - 80px); /* Subtract tab, header, and input area */
+                padding: 12px;
             }
         }
 
         @media (max-width: 640px) {
             body {
-                padding: 8px;
+                padding: 0;
             }
 
             .main-container {
                 width: 100%;
-                gap: 1px;
-                border-radius: 6px;
-            }
-
-            .chat-container, .streaming-panel {
-                min-width: 280px;
+                border-radius: 0;
+                height: 100vh;
             }
 
             .header, .streaming-panel-header {
@@ -1489,7 +1574,7 @@ const getChatUI = () => {
                 font-size: 13px;
             }
 
-            .header p, .streaming-panel-header p {
+            .header .subtitle, .streaming-panel-header .subtitle {
                 font-size: 11px;
             }
 
@@ -1497,15 +1582,29 @@ const getChatUI = () => {
                 padding: 10px 12px;
             }
 
-            .chat-area, .streaming-content {
-                padding: 12px;
+            .tab-button {
+                padding: 10px 12px;
+                font-size: 12px;
             }
         }
     </style>
   </head>
 <body>
+    <!-- Mobile tab navigation -->
+    <div class="mobile-tabs">
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="switchToTab('chat')">
+                <i data-lucide="message-circle"></i> Chat
+            </button>
+            <button class="tab-button" onclick="switchToTab('output')">
+                <i data-lucide="terminal"></i> Live Output
+                <span class="tab-badge" id="outputBadge" style="display: none;">0</span>
+            </button>
+        </div>
+    </div>
+
     <div class="main-container">
-        <div class="chat-container">
+        <div class="chat-container" id="chatContainer">
             <div class="header">
                 <div class="header-info">
                     <h1>IGOR Code Generator</h1>
@@ -1550,7 +1649,7 @@ const getChatUI = () => {
             </div>
         </div>
 
-        <div class="streaming-panel">
+        <div class="streaming-panel" id="streamingPanel">
             <div class="streaming-panel-header">
                 <div class="header-info">
                     <h2>Live Output</h2>
@@ -2054,6 +2153,14 @@ const getChatUI = () => {
                 console.log('Cancelled existing polling operation');
             }
 
+            // On mobile, automatically switch to output tab when generation starts
+            if (window.innerWidth <= 768 && typeof window.switchToTab === 'function') {
+                window.switchToTab('output');
+            }
+
+            // Clear badge count for new generation
+            clearOutputBadge();
+
             createStreamingContainer();
             completedFiles = [];
             logEntries = [];
@@ -2092,7 +2199,7 @@ const getChatUI = () => {
                     const generationId = data.generationId;
                     let processedEventCount = 0;
                     let retryCount = 0;
-                    let pollInterval = 200; // Start with 1 second
+                    let pollInterval = 100; // Start with 1 second
                     const maxRetries = 10;
                     const maxPollInterval = 5000; // Max 5 seconds between polls
                     const startTime = Date.now();
@@ -2202,6 +2309,7 @@ const getChatUI = () => {
                                                .replace(/🤖/g, '<i data-lucide="bot"></i>')
                                                .replace(/📡/g, '<i data-lucide="radio"></i>')
                                                .replace(/🔄/g, '<i data-lucide="refresh-cw"></i>'));
+                        updateOutputBadge(); // Update badge on status changes
                         lucide.createIcons();
                         break;
 
@@ -2238,6 +2346,7 @@ const getChatUI = () => {
                     case 'file_complete':
                         addCompletedFile(eventData.path, eventData.content);
                         updateStatus(eventData.message.replace(/✅/g, '<i data-lucide="check-circle"></i>'));
+                        updateOutputBadge(); // Update badge when files are completed
 
                         // Reset current file display for next file
                         const currentFileDiv = document.getElementById('currentFile');
@@ -2302,6 +2411,66 @@ const getChatUI = () => {
             // Use streaming by default
             handleStreaming(prompt);
         });
+
+        // Badge management for mobile tabs
+        let outputActivityCount = 0;
+
+        function updateOutputBadge(increment = true) {
+            const badge = document.getElementById('outputBadge');
+            const streamingPanel = document.getElementById('streamingPanel');
+
+            if (!badge) return;
+
+            // Only show badge on mobile when streaming panel is hidden
+            if (window.innerWidth <= 768 && streamingPanel && streamingPanel.classList.contains('hidden')) {
+                if (increment) outputActivityCount++;
+
+                if (outputActivityCount > 0) {
+                    badge.textContent = outputActivityCount > 99 ? '99+' : outputActivityCount.toString();
+                    badge.style.display = 'inline-block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        }
+
+        function clearOutputBadge() {
+            const badge = document.getElementById('outputBadge');
+            if (badge) {
+                outputActivityCount = 0;
+                badge.style.display = 'none';
+            }
+        }
+
+        // Mobile tab switching functionality
+        function switchToTab(tabName) {
+            const chatContainer = document.getElementById('chatContainer');
+            const streamingPanel = document.getElementById('streamingPanel');
+            const tabButtons = document.querySelectorAll('.tab-button');
+
+            // Remove active class from all buttons
+            tabButtons.forEach(button => button.classList.remove('active'));
+
+            if (tabName === 'chat') {
+                chatContainer.classList.remove('hidden');
+                streamingPanel.classList.add('hidden');
+                tabButtons[0].classList.add('active');
+                // Focus input when switching to chat
+                promptInput.focus();
+            } else if (tabName === 'output') {
+                chatContainer.classList.add('hidden');
+                streamingPanel.classList.remove('hidden');
+                tabButtons[1].classList.add('active');
+                // Clear badge when viewing output
+                clearOutputBadge();
+            }
+
+            // Re-render Lucide icons after tab switch
+            lucide.createIcons();
+        }
+
+        // Make switchToTab globally accessible
+        window.switchToTab = switchToTab;
 
         // Focus input on load
         promptInput.focus();

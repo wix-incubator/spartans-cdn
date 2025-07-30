@@ -42,8 +42,14 @@ class StreamingFileParser {
     this.eventEmitter = eventEmitter;
   }
 
+  private LOG_LEVEL = 'info';
   // Helper method to emit both console log and client log
   private log(level: 'info' | 'debug' | 'warn' | 'error', message: string, data?: any) {
+    if (level === 'debug' && this.LOG_LEVEL !== 'debug') return;
+    if (level === 'info' && this.LOG_LEVEL !== 'debug' && this.LOG_LEVEL !== 'info') return;
+    if (level === 'warn' && this.LOG_LEVEL !== 'debug' && this.LOG_LEVEL !== 'info' && this.LOG_LEVEL !== 'warn') return;
+    if (level === 'error' && this.LOG_LEVEL !== 'debug' && this.LOG_LEVEL !== 'info' && this.LOG_LEVEL !== 'warn' && this.LOG_LEVEL !== 'error') return;
+
     console.log(`${level.toUpperCase()}: ${message}`, data || '');
     this.eventEmitter('log', {
       level,
@@ -129,25 +135,34 @@ class StreamingFileParser {
   }
 
   private parseStreamingFiles() {
-    // Look for opening file tags
-    const openTagRegex = /<file\s+path="([^"]+)">/g;
+    // Look for opening file tags with both path and description attributes
+    const openTagRegex = /<file\s+path="([^"]+)"(?:\s+description="([^"]*)")?>/g;
     let openMatch;
 
     while ((openMatch = openTagRegex.exec(this.buffer)) !== null) {
-      const [fullMatch, filePath] = openMatch;
+      const [fullMatch, filePath, description] = openMatch;
 
-      if (!this.isInFile) {
+            if (!this.isInFile) {
         this.currentFilePath = filePath.trim();
         this.currentFileBuffer = '';
         this.isInFile = true;
 
+        // Debug logs for description parsing
         this.log('info', `📝 Starting to generate file: ${this.currentFilePath}`);
+        this.log('debug', `🔍 Parsed description: "${description || 'NO DESCRIPTION'}"`);
+        this.log('debug', `🔍 Full match: "${fullMatch}"`);
 
-        // Emit file start event
-        this.eventEmitter('file_start', {
+        // Emit file start event with description if available
+        const eventData = {
           path: this.currentFilePath,
-          message: `📝 Starting to generate: ${this.currentFilePath}`
-        });
+          description: description || '',
+          message: description
+            ? `📝 ${description}`
+            : `📝 Starting to generate: ${this.currentFilePath}`
+        };
+
+        this.log('debug', `🔍 Emitting file_start event:`, eventData);
+        this.eventEmitter('file_start', eventData);
 
         // Remove the opening tag from buffer
         this.buffer = this.buffer.replace(fullMatch, '');
@@ -428,20 +443,22 @@ Your output format with files and messages must be the following and nothing mor
 <message>
   markdown message content
 </message>
-<file path="src/the/path/to/the/file">
+<file path="src/the/path/to/the/file" description="a description of what you are doing in high level">
   the new file content
 </file>
-<file path="src/the/path/to/the/file">
+<file path="src/the/path/to/the/file" description="a description of what you are doing in high level">
   the new file content
 </file>
 <message>
   another markdown message to the user ...
 </message>
-<file path="src/the/path/to/the/file">
+<file path="src/the/path/to/the/file" description="a description of what you are doing in high level">
   the new file content
 </file>
 
 all files must be in the src folder
+
+you must always write descriptions for the files you are writing / editing.
 
 you may add new files.
 
@@ -1673,6 +1690,16 @@ const getChatUI = () => {
     </div>
 
     <script>
+        // Debug configuration - set to false to disable all debug logs
+        const DEBUG_LOGS = false;
+
+        // Debug logging wrapper
+        const debugLog = (...args) => {
+            if (DEBUG_LOGS) {
+                console.log(...args);
+            }
+        };
+
         const chatArea = document.getElementById('chatArea');
         const streamingContent = document.getElementById('streamingContent');
         const promptForm = document.getElementById('promptForm');
@@ -1757,104 +1784,268 @@ const getChatUI = () => {
             }
         }
 
-        let currentStreamingMessage = null;
+                                let currentStreamingMessage = null;
+
+        // Chat typing state
         let typingAnimation = null;
-        let currentTypingText = '';
-        let targetTypingText = '';
-        let typingIndex = 0;
+        let displayedText = '';
+        let targetText = '';
+        let lastProcessedMessage = '';
 
-        function addClaudeMessage(message) {
-            console.log('📝 Adding Claude message to chat:', message);
+        // File typing state (reusing same pattern)
+        let fileTypingAnimation = null;
+        let fileDisplayedText = '';
+        let fileTargetText = '';
+        let lastProcessedFileContent = '';
 
-            // Stop any ongoing typing animation
+        // Final message completion flags
+        window.finalMessagePending = false;
+        window.finalMessage = null;
+
+
+
+        function resetChatTyping() {
             if (typingAnimation) {
                 clearTimeout(typingAnimation);
                 typingAnimation = null;
             }
-
-            // If there's a streaming message, replace it with the final message
-            if (currentStreamingMessage) {
-                currentStreamingMessage.remove();
-                currentStreamingMessage = null;
-            }
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message claude-message';
-
-            const time = new Date().toLocaleTimeString('en-US', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            // Configure marked for better security and GitHub-flavored markdown
-            marked.setOptions({
-                breaks: true,
-                gfm: true
-            });
-
-            messageDiv.innerHTML = \`
-                <div class="message-header">
-                    <span>IGOR</span>
-                    <span class="message-time">\${time}</span>
-                </div>
-                <div class="message-content">\${marked.parse(message)}</div>
-            \`;
-
-            chatArea.appendChild(messageDiv);
-            chatArea.scrollTop = chatArea.scrollHeight;
-            console.log('✅ Claude message added to DOM');
+            displayedText = '';
+            targetText = '';
+            lastProcessedMessage = '';
         }
 
-        function typeText(targetText, contentDiv, onComplete = null) {
-            // Stop any previous typing animation
-            if (typingAnimation) {
-                clearTimeout(typingAnimation);
-                typingAnimation = null;
+        function resetFileTyping() {
+            if (fileTypingAnimation) {
+                clearTimeout(fileTypingAnimation);
+                fileTypingAnimation = null;
+            }
+            fileDisplayedText = '';
+            fileTargetText = '';
+            lastProcessedFileContent = '';
+        }
+
+        function finalizePendingMessage(message) {
+            console.log('📝 Finalizing pending message');
+
+            if (!currentStreamingMessage) {
+                console.log('⚠️ No streaming message to finalize');
+                return;
             }
 
-            targetTypingText = targetText;
-            typingIndex = 0;
-            currentTypingText = '';
+            // Update the streaming message to final state
+            const contentDiv = currentStreamingMessage.querySelector('.message-content');
+            const timeDiv = currentStreamingMessage.querySelector('.message-time');
 
-            const typeNextChar = () => {
-                if (typingIndex < targetTypingText.length) {
-                    currentTypingText += targetTypingText[typingIndex];
-                    typingIndex++;
+            if (contentDiv && timeDiv) {
+                // Parse final markdown
+                marked.setOptions({ breaks: true, gfm: true });
+                contentDiv.innerHTML = marked.parse(message);
 
-                    // Update content with current typed text
-                    contentDiv.innerHTML = marked.parse(currentTypingText);
+                // Update time and remove streaming indicator
+                const time = new Date().toLocaleTimeString('en-US', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                timeDiv.textContent = time;
+
+                // Remove streaming class
+                currentStreamingMessage.classList.remove('streaming-message');
+
+                chatArea.scrollTop = chatArea.scrollHeight;
+                console.log('✅ Streaming message converted to final message');
+            }
+
+            currentStreamingMessage = null;
+            window.finalMessagePending = false;
+            window.finalMessage = null;
+        }
+
+
+
+        function addClaudeMessage(message) {
+            console.log('📝 Final Claude message received:', message);
+
+            // If there's a streaming message, let the typing complete naturally
+            if (currentStreamingMessage) {
+                console.log('📝 Letting existing streaming message complete naturally');
+
+                // Just update the target - let the typing animation finish naturally
+                if (typingAnimation) {
+                    console.log('📝 Typing animation active - updating target to final message');
+                    targetText = message;
+                    lastProcessedMessage = message;
+
+                    // Mark this as the final message so when typing completes, it finalizes
+                    window.finalMessagePending = true;
+                    window.finalMessage = message;
+                } else {
+                    // No animation running, complete immediately
+                    console.log('📝 No animation running, completing immediately');
+                    finalizePendingMessage(message);
+                }
+            } else {
+                console.log('📝 No streaming message found, creating new final message');
+
+                // Stop any ongoing typing animation
+                resetChatTyping();
+
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message claude-message';
+
+                const time = new Date().toLocaleTimeString('en-US', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                // Configure marked for better security and GitHub-flavored markdown
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true
+                });
+
+                messageDiv.innerHTML = \`
+                    <div class="message-header">
+                        <span>IGOR</span>
+                        <span class="message-time">\${time}</span>
+                    </div>
+                    <div class="message-content">\${marked.parse(message)}</div>
+                \`;
+
+                chatArea.appendChild(messageDiv);
+                chatArea.scrollTop = chatArea.scrollHeight;
+                console.log('✅ New Claude message added to DOM');
+            }
+        }
+
+                function typeNewContent(fullMessage, contentDiv) {
+            debugLog('🎯 [TYPING] typeNewContent called');
+            debugLog('🎯 [TYPING] fullMessage:', JSON.stringify(fullMessage.substring(0, 100)));
+            debugLog('🎯 [TYPING] displayedText before:', JSON.stringify(displayedText.substring(0, 100)));
+
+            // If no content to type, just update display
+            if (!fullMessage || fullMessage.length === 0) {
+                debugLog('🎯 [TYPING] No content to type, returning');
+                return;
+            }
+
+            // Set target to the full message
+            targetText = fullMessage;
+
+            // If we already have some text displayed and it matches the start of the target, continue from there
+            if (displayedText && targetText.startsWith(displayedText)) {
+                debugLog('🎯 [TYPING] Continuing from existing displayed text');
+            } else {
+                // Start fresh
+                debugLog('🎯 [TYPING] Starting fresh typing');
+                displayedText = '';
+            }
+
+            debugLog('🎯 [TYPING] targetText length:', targetText.length);
+            debugLog('🎯 [TYPING] displayedText length:', displayedText.length);
+            debugLog('🎯 [TYPING] Starting continuous word-by-word typing');
+
+                        const typeNextWord = () => {
+                                // Check if we've reached the current target
+                if (displayedText.length >= targetText.length) {
+                    // Typing complete for current target
+                    debugLog('🎯 [TYPING] Word typing complete! Final text length:', displayedText.length);
+                    const finalHtml = marked.parse(displayedText);
+                    contentDiv.innerHTML = finalHtml;
+                    typingAnimation = null;
+
+                    // Check if there's a pending final message to finalize
+                    if (window.finalMessagePending && window.finalMessage) {
+                        debugLog('🎯 [TYPING] Finalizing pending message after typing completion');
+                        finalizePendingMessage(window.finalMessage);
+                    }
+
+                    return;
+                }
+
+                // Find the next word to type - try multiple approaches
+                const remainingText = targetText.substring(displayedText.length);
+                debugLog('🎯 [TYPING] Remaining text:', JSON.stringify(remainingText.substring(0, 50)));
+
+                // Simple approach: take next 1-5 characters as a "word"
+                let nextChunk = '';
+                if (remainingText.length > 0) {
+                    // Find word boundary or take up to 3 characters
+                    const match = remainingText.match(/^(\\S+|\\s+)/);
+                    if (match) {
+                        nextChunk = match[1];
+                    } else {
+                        // Fallback: take first character
+                        nextChunk = remainingText[0];
+                    }
+                }
+
+                                if (nextChunk) {
+                    displayedText += nextChunk;
+
+                    debugLog('🎯 [TYPING] Added chunk:', JSON.stringify(nextChunk));
+                    debugLog('🎯 [TYPING] Progress:', displayedText.length, '/', targetText.length);
+
+                    // During typing, use plain text with line breaks converted to <br>
+                    const displayHtml = displayedText
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/\\n/g, '<br>');
+
+                    contentDiv.innerHTML = displayHtml;
 
                     // Auto-scroll
                     chatArea.scrollTop = chatArea.scrollHeight;
 
-                    // Schedule next character (adjust timing as needed)
-                    typingAnimation = setTimeout(typeNextChar, 20); // 20ms between characters
+                    // Schedule next word (faster typing)
+                    typingAnimation = setTimeout(typeNextWord, 30);
                 } else {
-                    // Typing complete
+                    // No more content, complete typing
+                    debugLog('🎯 [TYPING] No more content, completing');
+                    displayedText = targetText; // Ensure we have the complete text
+                    const finalHtml = marked.parse(displayedText);
+                    contentDiv.innerHTML = finalHtml;
                     typingAnimation = null;
-                    if (onComplete) onComplete();
+
+                    // Check if there's a pending final message to finalize
+                    if (window.finalMessagePending && window.finalMessage) {
+                        debugLog('🎯 [TYPING] Finalizing pending message after typing completion');
+                        finalizePendingMessage(window.finalMessage);
+                    }
                 }
             };
 
-            typeNextChar();
+            typeNextWord();
         }
 
         function completeCurrentTyping(contentDiv) {
+            debugLog('🎯 [TYPING] completeCurrentTyping called');
+            debugLog('🎯 [TYPING] targetText:', JSON.stringify(targetText));
+
             // Stop animation and complete immediately
             if (typingAnimation) {
+                debugLog('🎯 [TYPING] Stopping animation for completion');
                 clearTimeout(typingAnimation);
                 typingAnimation = null;
             }
-            if (targetTypingText && contentDiv) {
-                currentTypingText = targetTypingText;
-                contentDiv.innerHTML = marked.parse(targetTypingText);
+            if (targetText && contentDiv) {
+                displayedText = targetText;
+                const finalHtml = marked.parse(displayedText);
+                debugLog('🎯 [TYPING] Completed with HTML:', finalHtml.substring(0, 200));
+                contentDiv.innerHTML = finalHtml;
                 chatArea.scrollTop = chatArea.scrollHeight;
             }
         }
 
-        function addOrUpdateStreamingMessage(message, isPartial) {
-            console.log('🔄 Adding/updating streaming message:', message.substring(0, 50) + '...');
+                function addOrUpdateStreamingMessage(message, isPartial) {
+            debugLog('🔄 [STREAM] Adding/updating streaming message');
+            debugLog('🔄 [STREAM] Message length:', message.length);
+            debugLog('🔄 [STREAM] First 100 chars:', JSON.stringify(message.substring(0, 100)));
+            debugLog('🔄 [STREAM] isPartial:', isPartial);
+            debugLog('🔄 [STREAM] lastProcessedMessage length:', lastProcessedMessage.length);
+            debugLog('🔄 [STREAM] displayedText length:', displayedText.length);
 
             // Configure marked for better security and GitHub-flavored markdown
             marked.setOptions({
@@ -1863,6 +2054,7 @@ const getChatUI = () => {
             });
 
             if (!currentStreamingMessage) {
+                debugLog('🔄 [STREAM] Creating NEW streaming message');
                 // Create new streaming message
                 currentStreamingMessage = document.createElement('div');
                 currentStreamingMessage.className = 'message claude-message streaming-message';
@@ -1886,17 +2078,38 @@ const getChatUI = () => {
                 // Start typing the message
                 const contentDiv = currentStreamingMessage.querySelector('.message-content');
                 if (contentDiv) {
-                    typeText(message, contentDiv);
+                    debugLog('🔄 [STREAM] Initializing first message typing');
+                    displayedText = '';
+                    lastProcessedMessage = '';
+                    typeNewContent(message, contentDiv);
+                    lastProcessedMessage = message;
                 }
             } else {
-                // Update existing streaming message with typing effect
+                debugLog('🔄 [STREAM] Updating EXISTING streaming message');
+                // Update existing streaming message - only type NEW content
                 const contentDiv = currentStreamingMessage.querySelector('.message-content');
                 const timeSpan = currentStreamingMessage.querySelector('.message-time');
 
-                if (contentDiv) {
-                    // Complete current typing immediately and start new typing
-                    completeCurrentTyping(contentDiv);
-                    typeText(message, contentDiv);
+                debugLog('🔄 [STREAM] message !== lastProcessedMessage:', message !== lastProcessedMessage);
+
+                                if (contentDiv && message !== lastProcessedMessage) {
+                    debugLog('🔄 [STREAM] Processing message update');
+                    debugLog('🔄 [STREAM] Current message starts with last?:', message.startsWith(lastProcessedMessage));
+
+                                        // If there's already typing in progress, just extend the target
+                    if (typingAnimation) {
+                        debugLog('🔄 [STREAM] Extending existing typing animation');
+                        targetText = message; // Set target to full message
+                        lastProcessedMessage = message;
+                        debugLog('🔄 [STREAM] Extended targetText to:', JSON.stringify(targetText.substring(0, 100)));
+                    } else {
+                        // Start new typing with the full message
+                        debugLog('🔄 [STREAM] Starting new typing animation');
+                        typeNewContent(message, contentDiv);
+                        lastProcessedMessage = message;
+                    }
+                } else {
+                    debugLog('🔄 [STREAM] No content update needed');
                 }
 
                 if (timeSpan && isPartial) {
@@ -2063,26 +2276,154 @@ const getChatUI = () => {
         // Make toggleLogs globally accessible
         window.toggleLogs = toggleLogs;
 
-        function showCurrentFile(path) {
+        function showCurrentFile(path, description = '') {
+            console.log('📁 [FILE_START] Starting new file:', path);
+            console.log('📁 [FILE_START] Description:', description);
+
             const currentFileDiv = document.getElementById('currentFile');
             const fileName = document.getElementById('fileName');
             const fileContent = document.getElementById('fileContent');
 
             if (currentFileDiv && fileName && fileContent) {
                 currentFileDiv.style.display = 'block';
-                fileName.innerHTML = \`<i data-lucide="file-text"></i> \${path}\`;
+
+                // Show description if available, otherwise show path
+                if (description && description.trim()) {
+                    fileName.innerHTML = \`<i data-lucide="file-text"></i> \${description}\`;
+                } else {
+                    fileName.innerHTML = \`<i data-lucide="file-text"></i> \${path}\`;
+                }
+
                 fileContent.textContent = '';
+
+                // Reset file typing state for new file
+                resetFileTyping();
+
+                console.log('📁 [FILE_START] File typing state reset');
+
                 // Re-render Lucide icons
                 lucide.createIcons();
             }
         }
 
+        function typeFileContent(fullContent, fileContentDiv) {
+            debugLog('📁 [FILE_TYPING] typeFileContent called');
+            debugLog('📁 [FILE_TYPING] fullContent length:', fullContent.length);
+            debugLog('📁 [FILE_TYPING] fileDisplayedText before:', fileDisplayedText.length, 'chars');
+
+                        // If no content to type, just update display
+            if (!fullContent || fullContent.length === 0) {
+                debugLog('📁 [FILE_TYPING] No content to type, returning');
+                return;
+            }
+
+            // Set target to the full content
+            fileTargetText = fullContent;
+
+            // If we already have some text displayed and it matches the start of the target, continue from there
+            if (fileDisplayedText && fileTargetText.startsWith(fileDisplayedText)) {
+                debugLog('📁 [FILE_TYPING] Continuing from existing displayed text');
+            } else {
+                // Start fresh
+                debugLog('📁 [FILE_TYPING] Starting fresh typing');
+                fileDisplayedText = '';
+            }
+
+            debugLog('📁 [FILE_TYPING] fileTargetText length:', fileTargetText.length);
+            debugLog('📁 [FILE_TYPING] fileDisplayedText length:', fileDisplayedText.length);
+            debugLog('📁 [FILE_TYPING] Starting continuous word-by-word typing');
+
+            const typeNextWord = () => {
+                // Check if we've reached the current target
+                if (fileDisplayedText.length >= fileTargetText.length) {
+                    // Typing complete for current target
+                    debugLog('📁 [FILE_TYPING] Word typing complete! Final text length:', fileDisplayedText.length);
+                    fileContentDiv.textContent = fileDisplayedText;
+                    fileTypingAnimation = null;
+                    return;
+                }
+
+                // Find the next word to type - try multiple approaches
+                const remainingText = fileTargetText.substring(fileDisplayedText.length);
+                debugLog('📁 [FILE_TYPING] Remaining text:', JSON.stringify(remainingText.substring(0, 50)));
+
+                // Simple approach: take next 1-5 characters as a "word"
+                let nextChunk = '';
+                if (remainingText.length > 0) {
+                    // Find word boundary or take up to 3 characters
+                    const match = remainingText.match(/^(\\S+|\\s+)/);
+                    if (match) {
+                        nextChunk = match[1];
+                    } else {
+                        // Fallback: take first character
+                        nextChunk = remainingText[0];
+                    }
+                }
+
+                if (nextChunk) {
+                    fileDisplayedText += nextChunk;
+
+                    debugLog('📁 [FILE_TYPING] Added chunk:', JSON.stringify(nextChunk));
+                    debugLog('📁 [FILE_TYPING] Progress:', fileDisplayedText.length, '/', fileTargetText.length);
+
+                    // For file content, use plain text (no HTML escaping needed for <pre>)
+                    fileContentDiv.textContent = fileDisplayedText;
+
+                    // Auto-scroll to bottom of content
+                    fileContentDiv.scrollTop = fileContentDiv.scrollHeight;
+
+                    // Same fast timing as chat (5ms between words)
+                    fileTypingAnimation = setTimeout(typeNextWord, 15);
+                } else {
+                    // No more content, complete typing
+                    debugLog('📁 [FILE_TYPING] No more content, completing');
+                    fileDisplayedText = fileTargetText; // Ensure we have the complete text
+                    fileContentDiv.textContent = fileDisplayedText;
+                    fileTypingAnimation = null;
+                }
+            };
+
+            typeNextWord();
+        }
+
+        function completeFileTyping(fileContentDiv) {
+            debugLog('📁 [FILE_TYPING] completeFileTyping called');
+
+            // Stop animation and complete immediately
+            if (fileTypingAnimation) {
+                debugLog('📁 [FILE_TYPING] Stopping animation for completion');
+                clearTimeout(fileTypingAnimation);
+                fileTypingAnimation = null;
+            }
+            if (fileTargetText && fileContentDiv) {
+                fileDisplayedText = fileTargetText;
+                fileContentDiv.textContent = fileDisplayedText;
+                fileContentDiv.scrollTop = fileContentDiv.scrollHeight;
+            }
+        }
+
         function updateFileContent(content) {
+            debugLog('📁 [FILE_STREAMING] updateFileContent called');
+            debugLog('📁 [FILE_STREAMING] Content length:', content.length);
+            debugLog('📁 [FILE_STREAMING] lastProcessedFileContent length:', lastProcessedFileContent.length);
+
             const fileContent = document.getElementById('fileContent');
-            if (fileContent) {
-                fileContent.textContent = content;
-                // Auto-scroll to bottom of content
-                fileContent.scrollTop = fileContent.scrollHeight;
+            if (!fileContent) {
+                debugLog('📁 [FILE_STREAMING] No fileContent element found');
+                return;
+            }
+
+            // If there's already typing in progress, just extend the target
+            if (fileTypingAnimation) {
+                debugLog('📁 [FILE_STREAMING] Extending existing file typing animation');
+                fileTargetText = content; // Set target to full content
+                lastProcessedFileContent = content;
+                debugLog('📁 [FILE_STREAMING] Extended fileTargetText to:', fileTargetText.length, 'chars');
+            } else {
+                // Start new typing with the full content
+                debugLog('📁 [FILE_STREAMING] Starting new file typing animation');
+                typeFileContent(content, fileContent);
+                lastProcessedFileContent = content;
             }
         }
 
@@ -2234,6 +2575,10 @@ const getChatUI = () => {
                 currentStreamingMessage.remove();
                 currentStreamingMessage = null;
             }
+
+            // Reset all typing states for new generation
+            resetChatTyping();
+            resetFileTyping();
 
             // Clear the completed files list from previous generations
             const completedList = document.getElementById('completedFilesList');
@@ -2387,7 +2732,7 @@ const getChatUI = () => {
                         break;
 
                     case 'claude_message_streaming':
-                        console.log('🔄 Received streaming claude_message event:', eventData);
+                        debugLog('🔄 Received streaming claude_message event:', eventData);
                         addOrUpdateStreamingMessage(eventData.message, eventData.isPartial);
                         break;
 
@@ -2396,7 +2741,7 @@ const getChatUI = () => {
                         break;
 
                     case 'file_start':
-                        showCurrentFile(eventData.path);
+                        showCurrentFile(eventData.path, eventData.description);
                         updateStatus(eventData.message.replace(/📝/g, '<i data-lucide="file-text"></i>'));
                         lucide.createIcons();
                         break;

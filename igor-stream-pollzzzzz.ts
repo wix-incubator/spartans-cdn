@@ -24,9 +24,18 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000); // Clean every 5 minutes
 
+const readCLIAPIKey = () => {
+  const apiKeyJSON = readFileSync(join(process.cwd(), '../root/.wix/auth/api-key.json'), 'utf8');
+  const apiKey = JSON.parse(apiKeyJSON).token;
+  return apiKey;
+}
+
 const anthropic = createAnthropic({
   baseURL: "https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic",
-  apiKey: 'fake-api-key'
+  apiKey: 'fake-api-key',
+  headers: {
+    Authorization: readCLIAPIKey()
+  }
 });
 
 class StreamingFileParser {

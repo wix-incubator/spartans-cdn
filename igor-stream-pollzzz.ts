@@ -1758,9 +1758,19 @@ const getChatUI = () => {
         }
 
         let currentStreamingMessage = null;
+        let typingAnimation = null;
+        let currentTypingText = '';
+        let targetTypingText = '';
+        let typingIndex = 0;
 
         function addClaudeMessage(message) {
             console.log('📝 Adding Claude message to chat:', message);
+
+            // Stop any ongoing typing animation
+            if (typingAnimation) {
+                clearTimeout(typingAnimation);
+                typingAnimation = null;
+            }
 
             // If there's a streaming message, replace it with the final message
             if (currentStreamingMessage) {
@@ -1796,6 +1806,53 @@ const getChatUI = () => {
             console.log('✅ Claude message added to DOM');
         }
 
+        function typeText(targetText, contentDiv, onComplete = null) {
+            // Stop any previous typing animation
+            if (typingAnimation) {
+                clearTimeout(typingAnimation);
+                typingAnimation = null;
+            }
+
+            targetTypingText = targetText;
+            typingIndex = 0;
+            currentTypingText = '';
+
+            const typeNextChar = () => {
+                if (typingIndex < targetTypingText.length) {
+                    currentTypingText += targetTypingText[typingIndex];
+                    typingIndex++;
+
+                    // Update content with current typed text
+                    contentDiv.innerHTML = marked.parse(currentTypingText);
+
+                    // Auto-scroll
+                    chatArea.scrollTop = chatArea.scrollHeight;
+
+                    // Schedule next character (adjust timing as needed)
+                    typingAnimation = setTimeout(typeNextChar, 20); // 20ms between characters
+                } else {
+                    // Typing complete
+                    typingAnimation = null;
+                    if (onComplete) onComplete();
+                }
+            };
+
+            typeNextChar();
+        }
+
+        function completeCurrentTyping(contentDiv) {
+            // Stop animation and complete immediately
+            if (typingAnimation) {
+                clearTimeout(typingAnimation);
+                typingAnimation = null;
+            }
+            if (targetTypingText && contentDiv) {
+                currentTypingText = targetTypingText;
+                contentDiv.innerHTML = marked.parse(targetTypingText);
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+        }
+
         function addOrUpdateStreamingMessage(message, isPartial) {
             console.log('🔄 Adding/updating streaming message:', message.substring(0, 50) + '...');
 
@@ -1821,18 +1878,27 @@ const getChatUI = () => {
                         <span>IGOR</span>
                         <span class="message-time">\${time} \${isPartial ? '(streaming...)' : ''}</span>
                     </div>
-                    <div class="message-content">\${marked.parse(message)}</div>
+                    <div class="message-content"></div>
                 \`;
 
                 chatArea.appendChild(currentStreamingMessage);
+
+                // Start typing the message
+                const contentDiv = currentStreamingMessage.querySelector('.message-content');
+                if (contentDiv) {
+                    typeText(message, contentDiv);
+                }
             } else {
-                // Update existing streaming message
+                // Update existing streaming message with typing effect
                 const contentDiv = currentStreamingMessage.querySelector('.message-content');
                 const timeSpan = currentStreamingMessage.querySelector('.message-time');
 
                 if (contentDiv) {
-                    contentDiv.innerHTML = marked.parse(message);
+                    // Complete current typing immediately and start new typing
+                    completeCurrentTyping(contentDiv);
+                    typeText(message, contentDiv);
                 }
+
                 if (timeSpan && isPartial) {
                     const time = new Date().toLocaleTimeString('en-US', {
                         hour12: false,
@@ -1842,8 +1908,6 @@ const getChatUI = () => {
                     timeSpan.textContent = \`\${time} (streaming...)\`;
                 }
             }
-
-            chatArea.scrollTop = chatArea.scrollHeight;
         }
 
         function addSystemPrompt(prompt) {

@@ -1,8 +1,26 @@
 import type { APIRoute } from 'astro';
-import { readdirSync, writeFileSync, mkdirSync, readFileSync, statSync } from 'fs';
-import { dirname, join } from 'path';
-// import { streamText } from "ai";
-//import { createAnthropic } from "@ai-sdk/anthropic";
+// Conditional imports - only import Node.js modules when running in Node.js
+// @ts-ignore - Ignore TypeScript errors for dynamic imports
+let fs: any = null;
+let path: any = null;
+
+// Runtime environment detection
+const isNodeJS = typeof process !== 'undefined' && process.versions && process.versions.node;
+
+// Lazy load Node.js modules
+const loadNodeModules = async () => {
+  if (fs && path) return; // Already loaded
+
+  if (isNodeJS) {
+    try {
+      // Dynamic imports that won't be bundled for browser/Cloudflare
+      fs = await import('fs');
+      path = await import('path');
+    } catch (error) {
+      console.warn('Node.js modules not available:', error);
+    }
+  }
+};
 
 // Global state store for polling
 interface GenerationState {
@@ -14,20 +32,27 @@ interface GenerationState {
 
 const generationStates = new Map<string, GenerationState>();
 
-// Clean up old generations (older than 10 minutes)
-setInterval(() => {
-  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-  for (const [id, state] of generationStates.entries()) {
-    if (state.startTime < tenMinutesAgo) {
-      generationStates.delete(id);
+// Only set up cleanup interval in Node.js environment
+if (isNodeJS && typeof setInterval !== 'undefined') {
+  // Clean up old generations (older than 10 minutes)
+  setInterval(() => {
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    for (const [id, state] of generationStates.entries()) {
+      if (state.startTime < tenMinutesAgo) {
+        generationStates.delete(id);
+      }
     }
-  }
-}, 5 * 60 * 1000); // Clean every 5 minutes
+  }, 5 * 60 * 1000); // Clean every 5 minutes
+}
 
 const TOKEN_PATH = '../root/.wix/auth/api-key.json';
 
-const readCLIAPIKey = () => {
-  const apiKeyJSON = readFileSync(TOKEN_PATH, 'utf8');
+const readCLIAPIKey = async () => {
+  await loadNodeModules();
+  if (!fs || !isNodeJS) {
+    throw new Error('File system operations not available in this environment');
+  }
+  const apiKeyJSON = fs.readFileSync(TOKEN_PATH, 'utf8');
   const authJSON = JSON.parse(apiKeyJSON);
   const apiKey = authJSON.token || authJSON.accessToken;
   return apiKey;
@@ -37,7 +62,7 @@ const readCLIAPIKey = () => {
   baseURL: "https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic",
   apiKey: 'fake-api-key',
   headers: {
-    Authorization: readCLIAPIKey()
+    Authorization: await readCLIAPIKey()
   }
 });*/
 
@@ -46,7 +71,7 @@ async function streamClaudeCompletion(systemPrompt, userMessage) {
   const url = 'https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic/messages';
 
   const headers = {
-    'Authorization': readCLIAPIKey(),
+    'Authorization': await readCLIAPIKey(),
     'content-type': 'application/json',
   };
 
@@ -188,7 +213,7 @@ class StreamingFileParser {
     }
   }
 
-  private parseStreamingFiles() {
+  private async parseStreamingFiles() {
     // Look for opening file tags with both path and description attributes
     const openTagRegex = /<file\s+path="([^"]+)"(?:\s+description="([^"]*)")?>/g;
     let openMatch;
@@ -235,7 +260,7 @@ class StreamingFileParser {
         const fileContent = this.buffer.substring(0, contentEndIndex).trim();
 
         try {
-          this.writeFile(this.currentFilePath, fileContent);
+          await this.writeFile(this.currentFilePath, fileContent);
           this.log('info', `✅ Successfully completed file: ${this.currentFilePath}`);
 
           // Emit file complete event
@@ -280,23 +305,35 @@ class StreamingFileParser {
     }
   }
 
-  private writeFile(filePath: string, content: string) {
+  private async writeFile(filePath: string, content: string) {
+    await loadNodeModules();
+    if (!fs || !path || !isNodeJS) {
+      this.log('error', 'File system operations not available in this environment');
+      this.errors.push('File system operations not available');
+      return;
+    }
+
     // Ensure the file path starts with src/ as per the prompt requirements
     const fullPath = filePath.startsWith('src/') ? filePath : `src/${filePath}`;
 
     this.log('info', `✍️ Writing file: ${fullPath}`);
 
-    // Create directory if it doesn't exist
-    const dir = dirname(fullPath);
-    mkdirSync(dir, { recursive: true });
+    try {
+      // Create directory if it doesn't exist
+      const dir = path.dirname(fullPath);
+      fs.mkdirSync(dir, { recursive: true });
 
-    // Write the file
-    writeFileSync(fullPath, content, 'utf8');
-    this.writtenFiles.push(fullPath);
-    this.log('info', `✅ Successfully wrote: ${fullPath}`);
+      // Write the file
+      fs.writeFileSync(fullPath, content, 'utf8');
+      this.writtenFiles.push(fullPath);
+      this.log('info', `✅ Successfully wrote: ${fullPath}`);
+    } catch (error) {
+      this.log('error', `Failed to write file: ${fullPath}`, error);
+      this.errors.push(`Failed to write file: ${fullPath} - ${error.message}`);
+    }
   }
 
-  finalize(): { filesWritten: string[]; errors: string[]; totalFiles: number } {
+  async finalize(): Promise<{ filesWritten: string[]; errors: string[]; totalFiles: number }> {
     this.log('info', '🔄 Finalizing parsing process...');
 
     // Process any remaining messages in the buffer
@@ -305,7 +342,7 @@ class StreamingFileParser {
     // Handle any remaining file in progress
     if (this.isInFile && this.currentFileBuffer) {
       try {
-        this.writeFile(this.currentFilePath, this.currentFileBuffer);
+        await this.writeFile(this.currentFilePath, this.currentFileBuffer);
         this.log('info', `✅ Finalized remaining file: ${this.currentFilePath}`);
         this.eventEmitter('file_complete', {
           path: this.currentFilePath,
@@ -433,25 +470,31 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
     ]
 
     // Recursive function to read all files and directories
-    const readDirectoryRecursive = (dirPath: string, basePath: string = ''): string[] => {
+    const readDirectoryRecursive = async (dirPath: string, basePath: string = ''): Promise<string[]> => {
+      await loadNodeModules();
+      if (!fs || !path || !isNodeJS) {
+        log('warn', 'File system operations not available, returning empty directory listing');
+        return [];
+      }
+
       const results: string[] = [];
 
       try {
-        const items = readdirSync(dirPath);
+        const items = fs.readdirSync(dirPath);
 
         for (const item of items) {
-          const fullPath = join(dirPath, item);
-          const relativePath = basePath ? join(basePath, item) : item;
+          const fullPath = path.join(dirPath, item);
+          const relativePath = basePath ? path.join(basePath, item) : item;
 
           try {
-            const stat = statSync(fullPath);
+            const stat = fs.statSync(fullPath);
 
             if (stat.isDirectory()) {
               // Recursively read subdirectories
-              results.push(...readDirectoryRecursive(fullPath, relativePath));
+              results.push(...await readDirectoryRecursive(fullPath, relativePath));
             } else if (stat.isFile()) {
               // Add file to results
-              results.push(join(dirPath, item));
+              results.push(path.join(dirPath, item));
             }
           } catch (error) {
             console.warn(`Warning: Could not access ${fullPath}:`, error);
@@ -465,7 +508,7 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
     };
 
     const componentsPath = 'src/components';
-    const allComponentFiles = readDirectoryRecursive(componentsPath);
+    const allComponentFiles = await readDirectoryRecursive(componentsPath);
 
     // Separate UI components (read-only) from other components
     const uiComponents: string[] = [];
@@ -493,7 +536,10 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
     const nonUiComponents = editableComponents.map(filePath => {
       const relativePath = filePath.replace(/\\/g, '/'); // Normalize path separators
       try {
-        const content = readFileSync(filePath, 'utf8');
+        if (!fs || !isNodeJS) {
+          return `<file path="${relativePath}" error="File system not available" />`;
+        }
+        const content = fs.readFileSync(filePath, 'utf8');
         return `
           <file path="${relativePath}">
             ${content}
@@ -507,7 +553,10 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
 
     const files = importantFiles.map(file => {
       try {
-        const content = readFileSync(file, 'utf8');
+        if (!fs || !isNodeJS) {
+          return `<file path="${file}" error="File system not available" />`;
+        }
+        const content = fs.readFileSync(file, 'utf8');
         return `
         <file path="${file}">
           ${content}
@@ -626,7 +675,7 @@ make sure you integrate all the components so that the solution is complete and 
     log('info', `📊 Stream complete - processed ${chunkCount} chunks, total response length: ${fullResponse.length}`);
 
     // Finalize parsing
-    const finalResult = parser.finalize();
+    const finalResult = await parser.finalize();
 
     eventEmitter('complete', {
       message: `✅ Generation complete! ${finalResult.totalFiles} files written.`,

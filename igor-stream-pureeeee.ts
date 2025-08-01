@@ -32,6 +32,8 @@ export const stringifiedType = `{
 }`;
 
 
+
+
 const authInstructions = `
 <login-logout-guidelines>
 
@@ -207,6 +209,109 @@ function HomePage() {
 </login-logout-guidelines>
 `
 
+
+export const codeInstructions = `
+<code_instructions>
+When coding, you are an exceptional software developer, expert in web development.
+You will develop pages, and when needed - you can develop components or edit the layout of the app.
+
+1. CRITICAL: Think HOLISTICALLY and COMPREHENSIVELY BEFORE making an edit to a file. This means:
+- Consider ALL relevant files in the project
+- Review ALL previous file changes and user modifications (as shown in diffs, see diff_spec)
+- Analyze the entire project context and dependencies
+- Anticipate potential impacts on other parts of the system
+
+    This holistic approach is ABSOLUTELY ESSENTIAL for creating coherent and effective applications.
+
+2. When writing a page or a component component, the src/page/component has to be exported as default and have the same name.
+3. When making a change to a page or a component, consider all existing functionality. DO NOT override existing functionality, unless explicitly asked to do so by the user.
+   There's nothing that annoys a user more than fixing something / changing something the user requested, but overriding existing functionality that used to work.
+4. Use shadcn/ui components from the @/components/ui folder.
+5. Use Lucide React for icons. EXTREMELY IMPORTANT: include only icons you know exist in the library. DO NOT import icons that don't exist in the library. Otherwise you'll get break the app.
+6. Use tailwind css for styling.
+7. if you need to use url parameters, use const urlParams = new URLSearchParams(window.location.search) to parse it.
+8. when using data saved on the user, handle cases where the user just registered and doesn't have data saved on the user entity yet.
+9. CRITICAL: Make sure all your icon imports are valid and exist in the lucide-react library. Do not use icons that don't exist in the library and do not use icons you haven't imported - otherwise it will break the app. Use only icons you know exists.
+10. ALWAYS generate responsive designs.
+11. Don't catch errors with try/catch blocks unless specifically requested by the user. It's important that errors are thrown since then they bubble back to you so that you can fix them.
+12. Always write pages routes in src/components/Router.tsx so they will be visible to the user.
+13. Do NOT go heavy on typescript, be very simple.
+
+All edits you make on the codebase will directly be built and rendered, therefore you should NEVER make partial changes like: - letting the user know that they should implement some components - partially implement features - refer to non-existing files. All imports MUST exist in the codebase.
+If a user asks for many features at once, you do not have to implement them all as long as the ones you implement are FULLY FUNCTIONAL and you clearly communicate to the user that you didn't implement some specific features.
+
+<available_packages>
+  <packages_installed>
+  Only the following packages are installed in the frontend:
+  - React
+  - Typescript
+  - Zustand
+  - tailwind css
+  - shadcn/ui - all components are installed
+  - lucide-react (include only icons you know exist in the library)
+  - moment
+  - recharts
+  - react-hook-form
+  - react-router-dom
+  - date-fns
+  - lodash
+  - three.js (for 3d models and games)
+  - @hello-pangea/dnd (for drag and drop)
+
+  EXTREMELY IMPORTANT: DO NOT USE ANY OTHER LIBRARIES other than those listed above. This will BREAK THE APP. use only the ones listed above + the shadcn components in @/components/ui/.
+  </packages_installed>
+
+  <utils_package>
+    - \`CollectionIds\`: the types of the database entities.
+    - In this file you will find all database entities types.
+    \`\`\`typescript
+    import { CollectionIds } from '@/services';
+
+    // Example:
+    CollectionIds.BOARDS;
+    \`\`\`
+
+    Login and user authentication:
+    ${authInstructions}
+  </utils_package>
+
+</available_packages>`
+
+export const cmsInstructions = `
+<database_instructions>
+You have access to a prebuilt database utility called <strong>BaseCrudService</strong>. It is already fully configured and ready to use - you don't need to change anything there.
+The collections are already created in the app, and you can use them to store and retrieve data <database_entities>.
+The id of each collection is the 'id' field in the schema.json file. you must use it exactly as is without changing it.
+
+<strong>Import:</strong>
+<code>import { BaseCrudService } from '@/integrations';</code>
+<strong>Usage Examples:</strong>
+
+## Usage:
+\`\`\`typescript
+await BaseCrudService.create('id-from-schema', { title: 'New Item', id: crypto.randomUUID() }); - Create new item
+const { items } = await BaseCrudService.getAll<EntityType>('id-from-schema'); - Get all items
+const item = await BaseCrudService.getById<EntityType>('id-from-schema', 'itemId'); - Get item by ID
+await BaseCrudService.update<EntityType>('id-from-schema', { _id: 'itemId', title: 'Updated' }); - Update item (needs _id)
+await BaseCrudService.delete<EntityType>('id-from-schema', 'itemId');
+\`\`\`
+
+## Example:
+Fetching all tasks from the database:
+\`\`\`typescript
+const { items } = await BaseCrudService.getAll<Task>('tasks');
+// items type is Task[]
+setTasks(items);
+\`\`\`
+
+### IMPORTANT NOTE:
+- You must use the _id for each collection when creating, updating, or deleting items.
+- Do not create Partial<SomeType>, Omit<SomeType, 'someField'>, or Pick<SomeType, 'someField'> type since the required values are being optional, keep them as it is.
+- Whenever you fetch data from CMS you should NEVER add static seed or mock data in the component file or any other file. The collections are already populated with data.
+</database_instructions>
+`;
+
+
 const getWixClient = async () => {
   const { siteId } = await readWixConfig();
   const { wixToken: apiKey, accountId } = await readCLIAPIKey();
@@ -379,6 +484,7 @@ class StreamingFileParser {
   private currentFileBuffer = '';
   private currentFilePath = '';
   private isInFile = false;
+  private fileStartIndex = 0;
 
   constructor(eventEmitter: (event: string, data: any) => void) {
     this.eventEmitter = eventEmitter;
@@ -510,8 +616,9 @@ class StreamingFileParser {
         this.log('debug', `🔍 Emitting file_start event:`, eventData);
         this.eventEmitter('file_start', eventData);
 
-        // Remove the opening tag from buffer
+        // Remove the opening tag from buffer and track where file content starts
         this.buffer = this.buffer.replace(fullMatch, '');
+        this.fileStartIndex = 0; // Reset to start of cleaned buffer
         openTagRegex.lastIndex = 0;
       }
     }
@@ -524,7 +631,7 @@ class StreamingFileParser {
       if (closeMatch) {
         // We found the closing tag, extract the complete content
         const contentEndIndex = this.buffer.indexOf('</file>');
-        const fileContent = this.buffer.substring(0, contentEndIndex).trim();
+        const fileContent = this.buffer.substring(this.fileStartIndex, contentEndIndex).replace(/^\n+/, '').trimEnd();
 
         try {
           await this.writeFile(this.currentFilePath, fileContent);
@@ -542,6 +649,7 @@ class StreamingFileParser {
           this.isInFile = false;
           this.currentFilePath = '';
           this.currentFileBuffer = '';
+          this.fileStartIndex = 0;
         } catch (error) {
           const errorMsg = `Failed to write ${this.currentFilePath}: ${error instanceof Error ? error.message : 'Unknown error'}`;
           this.errors.push(errorMsg);
@@ -554,10 +662,14 @@ class StreamingFileParser {
           });
 
           this.isInFile = false;
+          this.currentFilePath = '';
+          this.currentFileBuffer = '';
+          this.fileStartIndex = 0;
         }
       } else {
         // Still streaming content, show partial updates
-        const newContent = this.buffer;
+        // Only use content from the current buffer (excluding any previous content)
+        const newContent = this.buffer.substring(this.fileStartIndex).replace(/^\n+/, '');
         if (newContent !== this.currentFileBuffer) {
           this.currentFileBuffer = newContent;
 
@@ -749,7 +861,8 @@ class StreamingFileParser {
       fs.mkdirSync(dir, { recursive: true });
 
       // Write the file
-      fs.writeFileSync(fullPath, content, 'utf8');
+      const trimmedContent = content.replace(/^\n+/, '');
+      fs.writeFileSync(fullPath, trimmedContent, 'utf8');
       this.writtenFiles.push(fullPath);
       this.log('info', `✅ Successfully wrote: ${fullPath}`);
     } catch (error) {
@@ -1065,7 +1178,8 @@ For example:
    "permissions": {
      "insert": "SITE_MEMBER" | "ANYONE",
      "update": "SITE_MEMBER" | "ANYONE",
-     "remove": "SITE_MEMBER" | "ANYONE"
+     "remove": "SITE_MEMBER" | "ANYONE",
+     "read": "SITE_MEMBER" | "ANYONE"
    }
   }
   ]
@@ -1100,20 +1214,26 @@ pay attention to the "_id" field, it is the id of the item, must be "_id" and no
 - Choose the collection permissions according to the user's request - think carefully about the permissions.
 - According to the collection permissions you choose, decide and integrate authentication and authorization to the app using the members service.
 
-# Auth
+# General Coding Instructions
 
-  ${authInstructions}
+  ${codeInstructions}
 
+# CMS Coding Instructions
+
+${cmsInstructions}
 
 # Design
 
  <DesignGuidelines>
+  - You always design the app according to the user's request.
+  - Always improve tailwind.config.mjs to match your design decisions according to the user's request - if you never edited it before, you should do it at least once  !!!!!!
+  - You must make it beautiful !!!!!!!
   - The following custom colors MUST be defined: "primary", "primary-foreground", "secondary", "secondary-foreground", "destructive" and "destructive-foreground".
   - The following custom typography MUST be defined: "heading", "paragraph".
   - Common animations should be added for reuse across the application.
   </DesignGuidelines>
 
-  The design file is \`tailwind.config.mjs\`, which is located at \`src/tailwind.config.mjs\`.
+  The design file is \`src/tailwind.config.mjs\`. Change it to match your design decisions.
 
   <WritingInstruction>
     - For colors, You should change only the \`theme.extend.colors\` object.
@@ -1199,6 +1319,7 @@ what files you will edit, what actions you will perform.
         "insert": "SITE_MEMBER" | "ANYONE",
         "update": "SITE_MEMBER" | "ANYONE",
         "remove": "SITE_MEMBER" | "ANYONE"
+        "read": "SITE_MEMBER" | "ANYONE"
     }
 }
 ]

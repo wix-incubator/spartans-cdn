@@ -1,9 +1,241 @@
 import type { APIRoute } from 'astro';
+import { createClient } from '@wix/sdk';
+import { collections, items } from '@wix/data'
 // Conditional imports - only import Node.js modules when running in Node.js
 // @ts-ignore - Ignore TypeScript errors for dynamic imports
 let fs: any = null;
 let path: any = null;
 
+export const stringifiedType = `{
+  loginEmail?: 'type is string'
+  loginEmailVerified?: 'type is boolean'
+  status?: 'type is enum of "UNKNOWN" | "PENDING" | "APPROVED" | "BLOCKED" | "OFFLINE"'
+  contact?: {
+    firstName?: 'type is string'
+    lastName?: 'type is string'
+    phones?: 'type is string[]'
+  },
+  profile?: {
+    nickname?: 'type is string'
+    photo?: {
+      url?: 'type is string'
+      height?: 'type is number'
+      width?: 'type is number'
+      offsetX?: 'type is number'
+      offsetY?: 'type is number'
+    },
+    title?: 'type is string'
+  },
+  _createdDate?: 'type is Date'
+  _updatedDate?: 'type is Date'
+  lastLoginDate?: 'type is Date'
+}`;
+
+
+const authInstructions = `
+<login-logout-guidelines>
+
+<when-to-implement-auth>
+**IMPLEMENT LOGIN/LOGOUT when the app has any of these features:**
+- User-specific data (todos, notes, profiles, settings, etc.)
+- Personal content (my items, my dashboard, user preferences)
+- User-generated content (posts, comments, uploads)
+- Personalized experiences (recommendations, history, favorites)
+- Any feature that requires knowing who the user is
+
+**DO NOT implement auth for:**
+- Simple informational websites
+- Pure public content (blogs, landing pages)
+- Apps that don't store or display user-specific data
+</when-to-implement-auth>
+
+- Authentication is managed via the Wix Members SDK (under @/integrations). All login and logout actions use redirects only.
+- The app uses a React Context provider. Import \`useMember\` from \`@/integrations\` to access member data and actions.
+- The \`MemberProvider\` is already set up and wraps the entire application, automatically checking authentication on app load.
+- The login function automatically redirects users back to the current page after successful authentication.
+- Use the pre-built \`SignIn\` and \`LoadingSpinner\` components from \`@/components/ui\` for consistent authentication UI.
+
+**IMPORTANT: When implementing login/logout functionality, always create a profile page and add it to the router.**
+
+<member-type-structure>
+The Member type structure:
+
+\`\`\`typescript
+${stringifiedType}
+\`\`\`
+</member-type-structure>
+
+<use-member-hook>
+Use the \`useMember\` hook to access:
+- \`member\`: Current member object (see Member type above)
+- \`isAuthenticated\`: Boolean if user is logged in (for public/mixed pages only)
+- \`isLoading\`: Boolean if authentication check is in progress (for layout/navigation only)
+- \`actions\`: { loadCurrentMember, login, logout, clearMember }
+
+**FOR PROTECTED PAGES:** While using \`MemberProtectedRoute\`, just use \`member\` directly (if needed) - no need to check \`isAuthenticated\` or \`isLoading\`.
+**FOR PUBLIC/MIXED PAGES:** Check \`isAuthenticated\` to show different content for logged-in vs anonymous users.
+**FOR LAYOUT/NAVIGATION:** Check \`isLoading\` and \`isAuthenticated\` to show appropriate navigation options.
+</use-member-hook>
+
+<required-implementation>
+**ALWAYS implement these when adding login/logout:**
+
+- **MemberProtectedRoute Component** - Use the existing \`MemberProtectedRoute\` wrapper for ALL protected routes
+- **Profile Page** - Create a ProfilePage component that displays member information (name, email, photo)
+- **Profile Route** - Add \`/profile\` route wrapped with \`MemberProtectedRoute\`
+- **Profile Link** - Add profile link to the navigation layout
+
+The profile page should use the \`MemberProtectedRoute\` wrapper to handle authentication automatically.
+Use the \`MemberProtectedRoute\` component for ALL protected routes for consistency.
+</required-implementation>
+
+<layout-pattern>
+**Create a Layout component that wraps the entire router:**
+
+\`\`\`typescript
+import { useMember } from '@/integrations';
+
+function Layout({ children }) {
+  const { member, isAuthenticated, isLoading, actions } = useMember();
+
+  return (
+    <div className="min-h-screen">
+      <nav className="flex justify-between items-center p-4 bg-white shadow">
+        <Link to="/">My App</Link>
+        <div>
+          {isLoading && <LoadingSpinner/>}
+          {!isAuthenticated && <button onClick={actions.login}>Sign In</button>}
+          {isAuthenticated && (
+            <>
+              <Link to="/profile">{member?.profile?.nickname || 'Profile'}</Link>
+              <button onClick={actions.logout}>Sign Out</button>
+            </>
+          )}
+        </div>
+      </nav>
+      <main>{children}</main>
+    </div>
+  );
+}
+
+// In Router.tsx:
+<MemberProvider>
+  <Router>
+    <Layout>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/profile" element={
+          <MemberProtectedRoute>
+            <ProfilePage />
+          </MemberProtectedRoute>
+        } />
+      </Routes>
+    </Layout>
+  </Router>
+</MemberProvider>
+\`\`\`
+</layout-pattern>
+
+<best-practices>
+- **Use \`MemberProtectedRoute\` for ALL protected routes** - Don't manually check authentication in protected pages
+- **Protected pages can use \`member\` directly** - If the page renders, user is already authenticated
+- **Only check authentication on public/mixed pages** - Use \`isAuthenticated\` for conditional content
+- **Only check \`isLoading\` in layout/navigation** - For showing loading states in nav bars
+- Show sign-in buttons instead of auto-redirecting for better UX on public pages
+- Don't manually call \`actions.loadCurrentMember()\` - it's automatic
+- Create a shared Layout component for consistent navigation
+- **MUST: Always create a profile page when implementing authentication**
+- Use proper member data structure: \`member?.profile?.nickname\`
+- Customize authentication UI through \`MemberProtectedRoute\` props instead of manual implementation
+</best-practices>
+
+<removing-authentication>
+**When user asks to REMOVE login/authentication functionality:**
+
+**Components to Remove:**
+- **ProfilePage component** - Delete the entire profile page and its file
+- **Layout component** - Remove if it only exists for auth navigation (check if used for other purposes)
+- **MemberProtectedRoute wrapper** - Remove from all routes, leaving just the page components
+
+**Code Cleanup in Mixed Routes:**
+- Remove all \`useMember\` imports and usage
+- Remove all \`member\`, \`isAuthenticated\`, \`isLoading\`, \`actions\` destructuring
+- Remove conditional rendering based on authentication status
+- Keep only the public/anonymous user content
+- Remove auth-related comments (e.g., "MIXED ROUTE" comments)
+
+**Router.tsx Changes:**
+- Remove \`/profile\` route entirely
+- Remove \`MemberProtectedRoute\` wrappers from all routes
+- Remove mixed route comments
+- Remove \`MemberProvider\` wrapper if no auth needed
+
+**Navigation/Layout Changes:**
+- Remove profile links from navigation
+- Remove sign-in/sign-out buttons
+- Remove any auth-dependent navigation logic
+
+**Example Before → After:**
+\`\`\`typescript
+// BEFORE (with auth)
+function HomePage() {
+  const { member, isAuthenticated, actions } = useMember();
+  return (
+    <div>
+      <h1>Welcome</h1>
+      {isAuthenticated ? (
+        <p>Hello, {member?.profile?.nickname}!</p>
+      ) : (
+        <button onClick={actions.login}>Sign In</button>
+      )}
+    </div>
+  );
+}
+
+// AFTER (no auth)
+function HomePage() {
+  return (
+    <div>
+      <h1>Welcome</h1>
+      <p>Welcome to our app!</p>
+    </div>
+  );
+}
+\`\`\`
+</removing-authentication>
+
+</login-logout-guidelines>
+`
+
+const getWixClient = async () => {
+  const { siteId } = await readWixConfig();
+  const { wixToken: apiKey, accountId } = await readCLIAPIKey();
+
+  const authHeaders = {
+      Authorization: apiKey,
+      'wix-account-id': accountId,
+      'wix-site-id': siteId
+  }
+
+  console.log('getting wix client with authHeaders', authHeaders);
+
+  const wixClient = createClient({
+    auth: {
+      getAuthHeaders: async () => {
+        console.log('getting auth headers');
+        return {
+          headers: authHeaders
+        }
+      }
+    },
+    modules: {
+      collections: collections,
+      items: items
+    }
+  });
+
+  return wixClient;
+}
 // Runtime environment detection
 const isNodeJS = typeof process !== 'undefined' && process.versions && process.versions.node;
 
@@ -25,7 +257,7 @@ const loadNodeModules = async () => {
 // Global state store for polling
 interface GenerationState {
   status: 'running' | 'completed' | 'error';
-  events: Array<{type: string, data: any, timestamp: number}>;
+  events: Array<{ type: string, data: any, timestamp: number }>;
   error?: string;
   startTime: number;
 }
@@ -47,16 +279,43 @@ if (isNodeJS && typeof setInterval !== 'undefined') {
 
 const TOKEN_PATH = '../root/.wix/auth/api-key.json';
 
-const readCLIAPIKey = async () => {
+const readWixConfig = async () => {
   await loadNodeModules();
   if (!fs || !isNodeJS) {
     throw new Error('File system operations not available in this environment');
   }
-  const apiKeyJSON = fs.readFileSync(TOKEN_PATH, 'utf8');
-  const authJSON = JSON.parse(apiKeyJSON);
-  const apiKey = authJSON.token || authJSON.accessToken;
-  return apiKey;
+  const configJSON = fs.readFileSync('wix.config.json', 'utf8');
+  console.log('wix config', configJSON);
+  return JSON.parse(configJSON);
 }
+
+const readCLIAPIKey = async () => {
+  const wixConfig = await readWixConfig();
+  await loadNodeModules();
+  if (!fs || !isNodeJS) {
+    throw new Error('File system operations not available in this environment');
+  }
+  let wixToken = process.env.WIX_TOKEN;
+  let accountId: string | undefined;
+
+  if (!wixToken) {
+    console.log('no api key found in env, reading from file', TOKEN_PATH);
+    const tokenJSON = fs.readFileSync(TOKEN_PATH, 'utf8');
+    const token = JSON.parse(tokenJSON);
+    wixToken = token.token || token.accessToken;
+    accountId = token.userInfo.userId;
+  }
+
+  console.log('wix token', wixToken?.substring(0, 10), '...');
+
+  return {
+    wixToken,
+    ...(accountId ? { accountId } : {}),
+    ...wixConfig
+  };
+}
+
+
 
 /*const anthropic = createAnthropic({
   baseURL: "https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic",
@@ -66,13 +325,15 @@ const readCLIAPIKey = async () => {
   }
 });*/
 
-async function streamClaudeCompletion(systemPrompt, userMessage) {
+async function streamClaudeCompletion(systemPrompt, userMessage, currentFiles) {
   const apiKey = 'fake-api-key';
   const url = 'https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic/messages';
 
+  const { wixToken: authApiKey } = await readCLIAPIKey();
   const headers = {
-    'Authorization': await readCLIAPIKey(),
+    'Authorization': authApiKey,
     'content-type': 'application/json',
+    'x-time-budget': '600000',
   };
 
   const body = JSON.stringify({
@@ -82,8 +343,12 @@ async function streamClaudeCompletion(systemPrompt, userMessage) {
     system: [
       {
         "text": systemPrompt,
-        "type": "text"
-      }
+        "type": "text",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      },
+      {  text: currentFiles, type: 'text' },
     ],
     messages: [
       { role: 'user', content: userMessage }
@@ -143,9 +408,11 @@ class StreamingFileParser {
     // Debug: Log chunk to see what we're receiving
     this.log('debug', `[DOWNLOAD] Received chunk (${chunk.length} chars): ${chunk.substring(0, 100)}${chunk.length > 100 ? '...' : ''}`);
 
-        // Process message tags first, then file tags
+    // Process message tags first, then file tags, then action tags
     this.parseMessages();
     this.parseStreamingFiles();
+    this.parseActions();
+    this.parsePlans();
 
     return {
       filesWritten: [...this.writtenFiles],
@@ -221,7 +488,7 @@ class StreamingFileParser {
     while ((openMatch = openTagRegex.exec(this.buffer)) !== null) {
       const [fullMatch, filePath, description] = openMatch;
 
-            if (!this.isInFile) {
+      if (!this.isInFile) {
         this.currentFilePath = filePath.trim();
         this.currentFileBuffer = '';
         this.isInFile = true;
@@ -305,6 +572,164 @@ class StreamingFileParser {
     }
   }
 
+  private parseActions() {
+    // Look for complete action tags
+    const actionRegex = /<action\s+module="([^"]+)"\s+action="([^"]+)"(?:\s+description="([^"]*)")?>([\s\S]*?)<\/action>/g;
+    let actionMatch;
+    let found = false;
+
+    while ((actionMatch = actionRegex.exec(this.buffer)) !== null) {
+      const [fullMatch, module, action, description, payload] = actionMatch;
+      const trimmedPayload = payload.trim();
+
+      this.log('info', `[ACTION] Found complete action tag! Module: ${module}, Action: ${action}`);
+
+      if (trimmedPayload) {
+        try {
+          // Parse JSON payload
+          const parsedPayload = JSON.parse(trimmedPayload);
+          this.log('info', `[ACTION] Parsed payload successfully`);
+
+          // Execute the action
+          this.executeAction(module, action, parsedPayload, description);
+        } catch (parseError) {
+          const errorMsg = `Failed to parse action payload: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`;
+          this.errors.push(errorMsg);
+          this.log('error', `[ACTION] ${errorMsg}`);
+
+          this.eventEmitter('action_error', {
+            module,
+            action,
+            description,
+            error: errorMsg,
+            message: `❌ Action Error: ${errorMsg}`
+          });
+        }
+        found = true;
+      }
+    }
+
+    // Remove all processed complete actions from buffer
+    if (found) {
+      this.buffer = this.buffer.replace(/<action\s+module="[^"]+"\s+action="[^"]+"(?:\s+description="[^"]*")?>([\s\S]*?)<\/action>/g, '');
+      this.log('debug', `[ACTION] Removed processed complete actions from buffer`);
+    }
+  }
+
+  private parsePlans() {
+    // Look for complete plan tags
+    const planRegex = /<plan>([\s\S]*?)<\/plan>/g;
+    let planMatch;
+    let found = false;
+
+    while ((planMatch = planRegex.exec(this.buffer)) !== null) {
+      const [fullMatch, planContent] = planMatch;
+      const trimmedPlan = planContent.trim();
+
+      this.log('info', `[PLAN] Found complete plan tag! Content length: ${trimmedPlan.length}`);
+
+      if (trimmedPlan) {
+        // Emit plan event
+        this.eventEmitter('plan', {
+          plan: trimmedPlan,
+          message: `📋 Plan: ${trimmedPlan.substring(0, 100)}${trimmedPlan.length > 100 ? '...' : ''}`,
+          timestamp: new Date().toISOString()
+        });
+
+        this.log('info', `[PLAN] Emitted plan content: ${trimmedPlan.substring(0, 200)}${trimmedPlan.length > 200 ? '...' : ''}`);
+        found = true;
+      }
+    }
+
+    // Remove all processed complete plans from buffer
+    if (found) {
+      this.buffer = this.buffer.replace(/<plan>[\s\S]*?<\/plan>/g, '');
+      this.log('debug', `[PLAN] Removed processed complete plans from buffer`);
+    }
+
+    // Also check for streaming plan content (incomplete plans)
+    const hasOpenTag = this.buffer.includes('<plan>');
+    const hasCloseTag = this.buffer.includes('</plan>');
+
+    if (!found && hasOpenTag && !hasCloseTag) {
+      const openMatch = this.buffer.match(/<plan>([\s\S]*?)$/);
+      if (openMatch) {
+        const partialContent = openMatch[1].trim();
+        if (partialContent && partialContent.length > 10) { // Only emit if substantial content
+          this.log('debug', `[PLAN] Found streaming plan content: "${partialContent.substring(0, 50)}..."`);
+
+          // Emit streaming plan event
+          this.eventEmitter('plan_streaming', {
+            plan: partialContent,
+            isPartial: true,
+            message: `📋 Planning: ${partialContent.substring(0, 100)}${partialContent.length > 100 ? '...' : ''}`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    }
+  }
+
+  private async executeAction(module: string, action: string, payload: any, description?: string) {
+    this.log('info', `[ACTION] Executing action: ${module}.${action}`);
+
+    // Emit action start event
+    this.eventEmitter('action_start', {
+      module,
+      action,
+      description,
+      payload,
+      message: description
+        ? `🔧 ${description}`
+        : `🔧 Executing: ${module}.${action}`
+    });
+
+    try {
+      // Get the module from availableModules
+      const wixClient = await getWixClient();
+      const moduleObj = wixClient[module]
+      if (!moduleObj) {
+        throw new Error(`Module '${module}' not found in availableModules`);
+      }
+
+      // Get the action function from the module
+      const actionFunc = moduleObj[action];
+      if (!actionFunc || typeof actionFunc !== 'function') {
+        throw new Error(`Action '${action}' not found or not a function in module '${module}'`);
+      }
+
+      // Execute the action with the payload
+      this.log('info', `[ACTION] Calling ${module}.${action} with payload`, payload);
+      const result = await actionFunc(...payload);
+
+      this.log('info', `[ACTION] Action completed successfully`);
+
+      // Emit action complete event
+      this.eventEmitter('action_complete', {
+        module,
+        action,
+        description,
+        payload,
+        result,
+        message: `✅ Action completed: ${module}.${action}`
+      });
+
+    } catch (error) {
+      const errorMsg = `Failed to execute action ${module}.${action}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      this.errors.push(errorMsg);
+      this.log('error', `[ACTION] ${errorMsg}`);
+
+      this.eventEmitter('action_error', {
+        module,
+        action,
+        description,
+        payload,
+        error: errorMsg,
+        message: `❌ Action Error: ${errorMsg}`
+      });
+    }
+  }
+
   private async writeFile(filePath: string, content: string) {
     await loadNodeModules();
     if (!fs || !path || !isNodeJS) {
@@ -338,6 +763,9 @@ class StreamingFileParser {
 
     // Process any remaining messages in the buffer
     this.parseMessages();
+
+    // Process any remaining actions in the buffer
+    this.parseActions();
 
     // Handle any remaining file in progress
     if (this.isInFile && this.currentFileBuffer) {
@@ -467,6 +895,7 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
 
     const importantFiles = [
       'src/tailwind.config.mjs',
+      'integrations/cms/service.ts',
     ]
 
     // Recursive function to read all files and directories
@@ -568,10 +997,8 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
       }
     }).join('\n\n---\n\n');
 
-    const systemPrompt = `
-You are the best programmer of a project written over Astro with React router and React components.
-
-The user will give you a prompt and you must change the files in the project to achieve the user's goal.
+    const currentFiles = `
+    # Current files:
 
 These are UI components that you can use but not change:
 
@@ -587,9 +1014,20 @@ ${files}
 
 you must only change these files, and nothing else
 
-you can write messages to the user regarding what you are doing with the <message> tag.
+    `;
 
-you dont always have to write or edit files, you can also write messages to the user.
+    const systemPrompt = `
+You are the best programmer of a project written over Astro with React router and React components.
+
+The user will give you a prompt and you must change the files in the project to achieve the user's goal.
+
+<role>
+If the user asks for an app that requires persistence, you must output the appropriate actions to create the collection and items and use them in the app.
+</role>
+
+# Messages
+
+you can write messages to the user regarding what you are doing with the <message> tag.
 
 <message>
   a message to the user
@@ -600,11 +1038,117 @@ you dont always have to write or edit files, you can also write messages to the 
 
 message content output should be markdown.
 
-Your output format with files and messages must be the following and nothing more:
+# Files
 
+you can ouput files with the <file> tag.
+
+# Actions
+
+## CMS Actions
+
+You can output actions with the <action> tag.
+
+For example:
+
+<action module="collections" action="createDataCollection">
+ [
+  {
+  "_id": "the-collection-id", // pay attention to this field, it is the id of the collection, must be "_id" and not "id"
+  "displayName": "the-collection-name",
+  "fields": [
+    {
+      "key": "field-key",
+      "type": "TEXT" | "NUMBER" | "BOOLEAN" | "DATE" | "REFERENCE" | "MULTI_REFERENCE" | "ARRAY" | "OBJECT",
+      "permissions": {
+        "insert": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
+        "update": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
+        "remove": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE"
+      }
+    }
+   ]
+  }
+  ]
+</action>
+
+pay attention to the "_id" field, it is the id of the item, must be "_id" and not "id"
+
+<action module="items" action="insert" description="a description of what you are doing in high level">
+[
+  "the-collection-id",
+  {
+     "any-field-key": "any-field-value",
+     "any-field-key-2": "any-field-value-2",
+     ...
+  }
+]
+</action>
+<action module="items" action="patch" description="a description of what you are doing in high level">
+[
+  "the-collection-id",
+  {
+  "any-field-key": "any-field-value",
+  "any-field-key-2": "any-field-value-2",
+  ...
+  }
+]
+</action>
+
+# Important:
+- Action payload must always be an array of the actions parameters.
+- When you create collections, create some mock items for the collection immediately.
+- Choose the collection permissions according to the user's request - think carefully about the permissions.
+- According to the collection permissions you choose, decide and integrate authentication and authorization to the app using the members service.
+
+# Auth
+
+  ${authInstructions}
+
+---
+
+# Output format
+
+Your output format can consist of:
+- plan: step by step plan for the task - only use this if the task is complex and requires a plan
+- files, with the <file> tag
+- messages, with the <message> tag
+- actions, with the <action> tag
+
+
+<plan>
+if the task is complex, explain step by step what you will do to achieve the user's goal in a complete and working way.
+what files you will edit, what actions you will perform.
+</plan>
 <message>
   markdown message content
 </message>
+<action module="collections" action="createDataCollection" description="a description of what you are doing in high level">
+[
+  "the-collection-id",
+  {
+  "fields": [
+    {
+      "key": "field-key",
+      "type": "TEXT" | "NUMBER" | "BOOLEAN" | "DATE" | "REFERENCE" | "MULTI_REFERENCE" | "ARRAY" | "OBJECT",
+      "permissions": {
+        "insert": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
+        "update": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
+        "remove": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE"
+      }
+    }
+  ]
+}
+]
+</action>
+<action module="items" action="insert" description="a description of what you are doing in high level">
+[
+  "the-collection-id",
+  {
+  "any-field-key": "any-field-value",
+  "any-field-key-2": "any-field-value-2",
+  ...
+}
+]
+</action>
 <file path="src/the/path/to/the/file" description="a description of what you are doing in high level">
   the new file content
 </file>
@@ -617,8 +1161,20 @@ Your output format with files and messages must be the following and nothing mor
 <file path="src/the/path/to/the/file" description="a description of what you are doing in high level">
   the new file content
 </file>
+<action module="items" action="insert" description="a description of what you are doing in high level">
+[
+  "the-collection-id",
+  {
+    "any-field-key": "any-field-value",
+    "any-field-key-2": "any-field-value-2",
+    ...
+  }
+]
+</action>
 
 all files must be in the src folder
+
+you can use integrations from the integrations folder with @/integrations/...
 
 you must always write descriptions for the files you are writing / editing.
 
@@ -626,7 +1182,14 @@ you may add new files.
 
 if you fail to write the best code possible, you and I will be fired.
 
+all actions must have descriptions.
+
+actions must be only from the above mentioned modules and actions.
+
 make sure you integrate all the components so that the solution is complete and working.
+
+Always choose wisely between writing files, performing actions, or writing messages to the user - according to the task and the user's request.
+
 
 `;
 
@@ -649,7 +1212,14 @@ make sure you integrate all the components so that the solution is complete and 
       maxTokens: 64000,
     });*/
 
-    const result = await streamClaudeCompletion(systemPrompt, prompt);
+    const result = await streamClaudeCompletion(systemPrompt, prompt, currentFiles);
+    if (!result) {
+      eventEmitter('error', {
+        message: '❌ Error: No response from Claude',
+        error: 'No response from Claude'
+      });
+      return;
+    }
     const textStream = createTextStreamFromReadableStream(result);
 
     const parser = new StreamingFileParser(eventEmitter);
@@ -1627,6 +2197,73 @@ const getChatUI = () => {
             white-space: pre-wrap;
         }
 
+        .action-payload, .action-result, .action-error {
+            margin: 8px 0;
+            padding: 8px 12px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .action-payload strong, .action-result strong, .action-error strong {
+            color: #f0f6fc;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+        }
+
+        .action-payload pre, .action-result pre, .action-error pre {
+            background: #0d1117;
+            color: #e6edf3;
+            padding: 8px;
+            border-radius: 3px;
+            overflow-x: auto;
+            margin: 0;
+            font-family: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 10px;
+            line-height: 1.4;
+        }
+
+        .action-error pre {
+            color: #f85149;
+        }
+
+        .action-toggle {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            color: #7d8590;
+            font-size: 11px;
+            user-select: none;
+            transition: color 0.2s ease;
+        }
+
+        .action-toggle:hover {
+            color: #e6edf3;
+        }
+
+        .action-toggle i {
+            width: 12px;
+            height: 12px;
+            transition: transform 0.2s ease;
+        }
+
+        .action-toggle.expanded i {
+            transform: rotate(90deg);
+        }
+
+        .action-details {
+            display: none;
+            margin-top: 8px;
+        }
+
+        .action-details.expanded {
+            display: block;
+        }
+
         /* Mobile tab system */
         .mobile-tabs {
             display: none;
@@ -1948,6 +2585,68 @@ const getChatUI = () => {
             if (statusElement) {
                 statusElement.innerHTML = message;
             }
+        }
+
+        let activeActions = new Map(); // Track active actions by module.action
+
+        function addActionMessage(eventData, status) {
+            // Only show completed and error actions, skip start
+            if (status === 'start') {
+                return;
+            }
+
+            const actionDiv = document.createElement('div');
+            actionDiv.className = 'streaming-container';
+
+            const statusIcons = {
+                complete: '<i data-lucide="check-circle"></i>',
+                error: '<i data-lucide="x-circle"></i>'
+            };
+
+            const statusColors = {
+                complete: '#2ea043',
+                error: '#f85149'
+            };
+
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            let actionDetails = '';
+            if (eventData.payload && typeof eventData.payload === 'object') {
+                actionDetails = '<div class="action-payload"><strong>Payload:</strong><pre>' +
+                    JSON.stringify(eventData.payload, null, 2) + '</pre></div>';
+            }
+
+            if (status === 'complete' && eventData.result) {
+                actionDetails += '<div class="action-result"><strong>Result:</strong><pre>' +
+                    JSON.stringify(eventData.result, null, 2) + '</pre></div>';
+            }
+
+            if (status === 'error' && eventData.error) {
+                actionDetails += '<div class="action-error"><strong>Error:</strong><pre>' +
+                    eventData.error + '</pre></div>';
+            }
+
+            const hasDetails = actionDetails || eventData.description;
+
+            actionDiv.innerHTML = '<div class="status-message" style="color: ' + statusColors[status] + ';">' +
+                statusIcons[status] + ' Action ' + status + ': ' + eventData.module + '.' + eventData.action +
+                '<span style="font-size: 10px; color: #7d8590; margin-left: 8px;">' + time + '</span>' +
+                '</div>' +
+                (hasDetails ? '<div class="action-toggle" onclick="toggleActionDetails(this)"><i data-lucide="chevron-right"></i>Show Details</div>' : '') +
+                (hasDetails ? '<div class="action-details">' +
+                    (eventData.description ? '<div class="file-content" style="padding: 8px 16px; font-size: 12px; color: #e6edf3;">' + eventData.description + '</div>' : '') +
+                    (actionDetails ? '<div class="file-content" style="max-height: 200px; overflow-y: auto;">' + actionDetails + '</div>' : '') +
+                    '</div>' : '');
+
+            streamingContent.appendChild(actionDiv);
+            streamingContent.scrollTop = streamingContent.scrollHeight;
+
+            // Re-render icons after adding content
+            lucide.createIcons();
         }
 
                                 let currentStreamingMessage = null;
@@ -2358,6 +3057,31 @@ const getChatUI = () => {
 
         // Make toggleSystemPrompt globally accessible
         window.toggleSystemPrompt = toggleSystemPrompt;
+
+        function toggleActionDetails(toggleElement) {
+            const actionDetails = toggleElement.nextElementSibling;
+            const chevronIcon = toggleElement.querySelector('i');
+
+            if (actionDetails && actionDetails.classList.contains('action-details')) {
+                const isExpanded = actionDetails.classList.contains('expanded');
+
+                if (isExpanded) {
+                    actionDetails.classList.remove('expanded');
+                    toggleElement.classList.remove('expanded');
+                    toggleElement.innerHTML = '<i data-lucide="chevron-right"></i>Show Details';
+                } else {
+                    actionDetails.classList.add('expanded');
+                    toggleElement.classList.add('expanded');
+                    toggleElement.innerHTML = '<i data-lucide="chevron-down"></i>Hide Details';
+                }
+
+                // Re-render lucide icons
+                lucide.createIcons();
+            }
+        }
+
+        // Make toggleActionDetails globally accessible
+        window.toggleActionDetails = toggleActionDetails;
 
                 function addLogEntry(level, message, data, timestamp) {
             const logsList = document.getElementById('logsList');
@@ -2963,6 +3687,34 @@ const getChatUI = () => {
                         lucide.createIcons();
                         break;
 
+                    case 'action_start':
+                        addActionMessage(eventData, 'start');
+                        updateOutputBadge(); // Update badge on action events
+                        lucide.createIcons();
+                        break;
+
+                    case 'action_complete':
+                        addActionMessage(eventData, 'complete');
+                        updateOutputBadge(); // Update badge on action events
+                        lucide.createIcons();
+                        break;
+
+                    case 'action_error':
+                        addActionMessage(eventData, 'error');
+                        updateOutputBadge(); // Update badge on action events
+                        lucide.createIcons();
+                        break;
+
+                    case 'plan':
+                        console.log('📋 Received plan event:', eventData);
+                        addClaudeMessage(eventData.plan);
+                        break;
+
+                    case 'plan_streaming':
+                        debugLog('📋 Received streaming plan event:', eventData);
+                        addOrUpdateStreamingMessage(eventData.plan, eventData.isPartial);
+                        break;
+
                     default:
                         console.log('Unknown event type:', eventType, eventData);
                 }
@@ -3196,3 +3948,5 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 };
+
+

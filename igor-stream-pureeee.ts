@@ -1059,13 +1059,14 @@ For example:
     {
       "key": "field-key",
       "type": "TEXT" | "NUMBER" | "BOOLEAN" | "DATE" | "REFERENCE" | "MULTI_REFERENCE" | "ARRAY" | "OBJECT",
-      "permissions": {
-        "insert": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
-        "update": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
-        "remove": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE"
-      }
-    }
-   ]
+    },
+    ...
+   ],
+   "permissions": {
+     "insert": "SITE_MEMBER" | "ANYONE",
+     "update": "SITE_MEMBER" | "ANYONE",
+     "remove": "SITE_MEMBER" | "ANYONE"
+   }
   }
   ]
 </action>
@@ -1103,6 +1104,68 @@ pay attention to the "_id" field, it is the id of the item, must be "_id" and no
 
   ${authInstructions}
 
+
+# Design
+
+ <DesignGuidelines>
+  - The following custom colors MUST be defined: "primary", "primary-foreground", "secondary", "secondary-foreground", "destructive" and "destructive-foreground".
+  - The following custom typography MUST be defined: "heading", "paragraph".
+  - Common animations should be added for reuse across the application.
+  </DesignGuidelines>
+
+  The design file is \`tailwind.config.mjs\`, which is located at \`src/tailwind.config.mjs\`.
+
+  <WritingInstruction>
+    - For colors, You should change only the \`theme.extend.colors\` object.
+    - For font sizes you should change only the \`theme.extend.fontSize\` object, while keeping the same structure and keys.
+    - For font families you should change only the \`theme.extend.fontFamily\` object, while keeping the same structure and keys.
+  </WritingInstruction>
+
+  # Routing:
+
+  Keep the router architecture as it is, and follow React Router's recommended patterns:
+
+1. Proper Router Context Hierarchy
+// Before: Layout was outside router context
+<MemberProvider>
+  <Layout> // ❌ No router context here
+    <RouterProvider router={router} />
+  </Layout>
+</MemberProvider>
+
+// After: Layout is inside router context
+<MemberProvider>
+  <RouterProvider router={router} /> // ✅ Router context established first
+</MemberProvider>
+2. Used Outlet Pattern
+Instead of wrapping the entire router, I made Layout a route component that uses <Outlet />:
+
+// Layout now renders children via Outlet
+function Layout() {
+  const { member, isAuthenticated, isLoading, actions } = useMember(); // ✅ Now has router context
+  return (
+    <div>
+      <nav>...</nav>
+      <main>
+        <Outlet /> {/* Children routes render here */}
+      </main>
+    </div>
+  );
+}
+3. Proper Route Nesting
+The router configuration now properly nests routes:
+
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <RootLayout />, // Contains Layout + ScrollToTop
+    children: [
+      { index: true, element: <MemberProtectedRoute><HomePage /></MemberProtectedRoute> },
+      { path: "/profile", element: <MemberProtectedRoute><ProfilePage /></MemberProtectedRoute> }
+    ]
+  }
+]);
+
 ---
 
 # Output format
@@ -1129,13 +1192,14 @@ what files you will edit, what actions you will perform.
     {
       "key": "field-key",
       "type": "TEXT" | "NUMBER" | "BOOLEAN" | "DATE" | "REFERENCE" | "MULTI_REFERENCE" | "ARRAY" | "OBJECT",
-      "permissions": {
-        "insert": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
-        "update": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE",
-        "remove": "ADMIN" | "SITE_MEMBER_AUTHOR" | "SITE_MEMBER" | "ANYONE"
-      }
+    },
+    ...
+  ],
+  "permissions": {
+        "insert": "SITE_MEMBER" | "ANYONE",
+        "update": "SITE_MEMBER" | "ANYONE",
+        "remove": "SITE_MEMBER" | "ANYONE"
     }
-  ]
 }
 ]
 </action>

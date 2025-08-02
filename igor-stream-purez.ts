@@ -367,17 +367,52 @@ interface GenerationState {
   startTime: number;
 }
 
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+interface Conversation {
+  id: string;
+  messages: ConversationMessage[];
+  lastActivity: number;
+  createdAt: number;
+}
+
 const generationStates = new Map<string, GenerationState>();
+const conversations = new Map<string, Conversation>();
 
 // Only set up cleanup interval in Node.js environment
 if (isNodeJS && typeof setInterval !== 'undefined') {
-  // Clean up old generations (older than 10 minutes)
+  // Clean up old generations (older than 10 minutes) and conversations (older than 24 hours)
   setInterval(() => {
     const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+    // Clean up old generations
+    let cleanedGenerations = 0;
     for (const [id, state] of generationStates.entries()) {
       if (state.startTime < tenMinutesAgo) {
         generationStates.delete(id);
+        cleanedGenerations++;
       }
+    }
+
+    // Clean up old conversations
+    let cleanedConversations = 0;
+    for (const [id, conversation] of conversations.entries()) {
+      if (conversation.lastActivity < twentyFourHoursAgo) {
+        conversations.delete(id);
+        cleanedConversations++;
+      }
+    }
+
+    // Clean up empty conversations
+    const cleanedEmpty = cleanupEmptyConversations();
+
+    if (cleanedGenerations > 0 || cleanedConversations > 0 || cleanedEmpty > 0) {
+      console.log(`🧹 [PERIODIC_CLEANUP] Cleaned ${cleanedGenerations} generations, ${cleanedConversations} old conversations, ${cleanedEmpty} empty conversations`);
     }
   }, 5 * 60 * 1000); // Clean every 5 minutes
 }
@@ -430,7 +465,7 @@ const readCLIAPIKey = async () => {
   }
 });*/
 
-async function streamClaudeCompletion(systemPrompt, userMessage, currentFiles) {
+async function streamClaudeCompletion(systemPrompt, messages, currentFiles) {
   const apiKey = 'fake-api-key';
   const url = 'https://manage.wix.com/_api/igor-ai-gateway/proxy/anthropic/messages';
 
@@ -455,12 +490,23 @@ async function streamClaudeCompletion(systemPrompt, userMessage, currentFiles) {
       },
       {  text: currentFiles, type: 'text' },
     ],
-    messages: [
-      { role: 'user', content: userMessage }
-    ]
+    messages: messages.map(msg => ({ role: msg.role, content: msg.content }))
   });
 
-  console.log('[Claude] streaming claude completion', body);
+  console.log('🤖 [CLAUDE] === SENDING TO CLAUDE ===');
+  console.log('🤖 [CLAUDE] Model:', 'claude-sonnet-4-20250514');
+  console.log('🤖 [CLAUDE] Messages being sent:', messages.length);
+  messages.forEach((msg, index) => {
+    console.log(`🤖 [CLAUDE] [${index}] ${msg.role}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`);
+  });
+  console.log('🤖 [CLAUDE] === END MESSAGE LIST ===');
+
+  console.log('[Claude] streaming claude completion', JSON.stringify({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 64000,
+    stream: true,
+    messageCount: messages.length
+  }, null, 2));
 
   const response = await fetch(url, {
     method: 'POST',
@@ -474,6 +520,112 @@ async function streamClaudeCompletion(systemPrompt, userMessage, currentFiles) {
   }
 
   return response.body;
+}
+
+// Helper functions for conversation management
+function getOrCreateConversation(conversationId?: string): Conversation {
+  console.log('🔍 [CONVERSATION] Getting/creating conversation, ID:', conversationId);
+
+  if (!conversationId) {
+    // Create new conversation
+    const newId = `conv_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    const conversation: Conversation = {
+      id: newId,
+      messages: [],
+      lastActivity: Date.now(),
+      createdAt: Date.now()
+    };
+    conversations.set(newId, conversation);
+    console.log('✅ [CONVERSATION] Created NEW conversation:', newId);
+    return conversation;
+  }
+
+  let conversation = conversations.get(conversationId);
+  if (!conversation) {
+    // Create conversation with provided ID if it doesn't exist
+    conversation = {
+      id: conversationId,
+      messages: [],
+      lastActivity: Date.now(),
+      createdAt: Date.now()
+    };
+    conversations.set(conversationId, conversation);
+    console.log('✅ [CONVERSATION] Created conversation with provided ID:', conversationId);
+  } else {
+    console.log('📚 [CONVERSATION] Found EXISTING conversation:', conversationId, 'with', conversation.messages.length, 'messages');
+    // Log the existing messages for debugging
+    conversation.messages.forEach((msg, index) => {
+      console.log(`   📝 [${index}] ${msg.role}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+    });
+  }
+
+  return conversation;
+}
+
+function addMessageToConversation(conversationId: string, role: 'user' | 'assistant', content: string) {
+  console.log('➕ [CONVERSATION] Adding message to conversation:', conversationId, 'role:', role, 'content length:', content.length);
+
+  const conversation = conversations.get(conversationId);
+  if (conversation) {
+    conversation.messages.push({
+      role,
+      content,
+      timestamp: Date.now()
+    });
+    conversation.lastActivity = Date.now();
+    console.log('✅ [CONVERSATION] Message added! Total messages now:', conversation.messages.length);
+    console.log('   📝 [PREVIEW]', role + ':', content.substring(0, 150) + (content.length > 150 ? '...' : ''));
+  } else {
+    console.error('❌ [CONVERSATION] ERROR: Conversation not found:', conversationId);
+  }
+}
+
+function clearConversation(conversationId: string): boolean {
+  console.log('🗑️ [CONVERSATION] Clearing conversation:', conversationId);
+  const deleted = conversations.delete(conversationId);
+  console.log('🗑️ [CONVERSATION] Cleared:', deleted ? 'SUCCESS' : 'NOT FOUND');
+  console.log('📊 [MEMORY] Total conversations in memory:', conversations.size);
+  return deleted;
+}
+
+function logConversationStats() {
+  console.log('📊 [MEMORY] === CONVERSATION STATS ===');
+  console.log('📊 [MEMORY] Total conversations:', conversations.size);
+
+  let emptyConversations = 0;
+  for (const [id, conv] of conversations.entries()) {
+    console.log(`📊 [MEMORY] ${id}: ${conv.messages.length} messages, last activity: ${new Date(conv.lastActivity).toISOString()}`);
+    if (conv.messages.length === 0) {
+      emptyConversations++;
+    }
+  }
+
+  if (emptyConversations > 0) {
+    console.log(`⚠️ [MEMORY] Found ${emptyConversations} empty conversations (potential leak)`);
+  }
+
+  console.log('📊 [MEMORY] === END STATS ===');
+}
+
+function cleanupEmptyConversations() {
+  let cleaned = 0;
+  const now = Date.now();
+  const fiveMinutesAgo = now - 5 * 60 * 1000; // 5 minutes
+
+  for (const [id, conversation] of conversations.entries()) {
+    // Remove conversations with no messages that are older than 5 minutes
+    if (conversation.messages.length === 0 && conversation.lastActivity < fiveMinutesAgo) {
+      conversations.delete(id);
+      cleaned++;
+      console.log('🧹 [CLEANUP] Removed empty conversation:', id);
+    }
+  }
+
+  if (cleaned > 0) {
+    console.log(`🧹 [CLEANUP] Cleaned up ${cleaned} empty conversations`);
+  }
+
+  return cleaned;
 }
 
 class StreamingFileParser {
@@ -914,7 +1066,7 @@ class StreamingFileParser {
 }
 
 // Helper function to convert ReadableStream to async iterable of text chunks
-async function* createTextStreamFromReadableStream(readableStream: ReadableStream<Uint8Array>): AsyncIterable<string> {
+async function* createTextStreamFromReadableStream(readableStream: ReadableStream<Uint8Array>, eventEmitter?: (event: string, data: any) => void): AsyncIterable<string> {
   const reader = readableStream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -928,6 +1080,18 @@ async function* createTextStreamFromReadableStream(readableStream: ReadableStrea
 
         try {
           const parsed = JSON.parse(data);
+
+          // Emit token usage events to client
+          if (eventEmitter) {
+            if (parsed.type === 'message_start') {
+              eventEmitter('message_start', parsed);
+              console.log('📤 [SERVER] Emitted message_start event to client');
+            } else if (parsed.type === 'message_delta') {
+              eventEmitter('message_delta', parsed);
+              console.log('📤 [SERVER] Emitted message_delta event to client');
+            }
+          }
+
           if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
             yield parsed.delta.text;
           }
@@ -972,7 +1136,13 @@ async function* createTextStreamFromReadableStream(readableStream: ReadableStrea
   }
 }
 
-const completePromptWithStreaming = async (prompt: string, generationId: string) => {
+const completePromptWithStreaming = async (prompt: string, generationId: string, conversationId?: string) => {
+  console.log('🚀 [START] === STARTING PROMPT COMPLETION ===');
+  console.log('🚀 [START] Generation ID:', generationId);
+  console.log('🚀 [START] Conversation ID:', conversationId || 'NOT PROVIDED (will create new)');
+  console.log('🚀 [START] Prompt length:', prompt.length);
+  console.log('🚀 [START] Prompt preview:', prompt.substring(0, 200) + (prompt.length > 200 ? '...' : ''));
+
   // Initialize generation state
   generationStates.set(generationId, {
     status: 'running',
@@ -1003,6 +1173,26 @@ const completePromptWithStreaming = async (prompt: string, generationId: string)
 
   try {
     log('info', '🚀 Starting Claude streaming request', { promptLength: prompt.length });
+
+        // Get or create conversation and add user message
+    console.log('🔄 [FLOW] About to get/create conversation with ID:', conversationId);
+    const conversation = getOrCreateConversation(conversationId);
+    console.log('🔄 [FLOW] Got conversation:', conversation.id, 'with', conversation.messages.length, 'existing messages');
+
+    console.log('🔄 [FLOW] Adding user prompt to conversation...');
+    addMessageToConversation(conversation.id, 'user', prompt);
+
+    console.log('🔄 [FLOW] Final conversation state before sending to Claude:');
+    console.log('   📊 ID:', conversation.id);
+    console.log('   📊 Total messages:', conversation.messages.length);
+    conversation.messages.forEach((msg, index) => {
+      console.log(`   📊 [${index}] ${msg.role}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+    });
+
+    log('info', '💬 Conversation context', {
+      conversationId: conversation.id,
+      messageCount: conversation.messages.length
+    });
 
     eventEmitter('status', { message: '🔍 Preparing request...' });
 
@@ -1397,7 +1587,7 @@ Always choose wisely between writing files, performing actions, or writing messa
       maxTokens: 64000,
     });*/
 
-    const result = await streamClaudeCompletion(systemPrompt, prompt, currentFiles);
+    const result = await streamClaudeCompletion(systemPrompt, conversation.messages, currentFiles);
     if (!result) {
       eventEmitter('error', {
         message: '❌ Error: No response from Claude',
@@ -1405,7 +1595,7 @@ Always choose wisely between writing files, performing actions, or writing messa
       });
       return;
     }
-    const textStream = createTextStreamFromReadableStream(result);
+    const textStream = createTextStreamFromReadableStream(result, eventEmitter);
 
     const parser = new StreamingFileParser(eventEmitter);
     let fullResponse = '';
@@ -1440,6 +1630,28 @@ Always choose wisely between writing files, performing actions, or writing messa
     });
 
     log('info', '✅ Streaming completed successfully');
+
+        // Add assistant response to conversation
+    console.log('🔄 [FLOW] Adding assistant response to conversation...');
+    console.log('🔄 [FLOW] Response length:', fullResponse.length, 'characters');
+    console.log('🔄 [FLOW] Response preview:', fullResponse.substring(0, 300) + (fullResponse.length > 300 ? '...' : ''));
+
+    addMessageToConversation(conversation.id, 'assistant', fullResponse);
+
+    // Log final conversation state
+    const finalConversation = conversations.get(conversation.id);
+    if (finalConversation) {
+      console.log('🔄 [FLOW] Final conversation after adding assistant response:');
+      console.log('   📊 Total messages:', finalConversation.messages.length);
+      finalConversation.messages.forEach((msg, index) => {
+        console.log(`   📊 [${index}] ${msg.role}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''} (${msg.content.length} chars)`);
+      });
+    }
+
+    log('info', '💬 Added assistant response to conversation', {
+      conversationId: conversation.id,
+      responseLength: fullResponse.length
+    });
 
     // Mark generation as completed
     const state = generationStates.get(generationId);
@@ -1696,6 +1908,99 @@ const getChatUI = () => {
             cursor: not-allowed;
             background: #238636;
             transform: none;
+        }
+
+        .clear-btn-inline {
+            padding: 2px 4px;
+            background: #21262d;
+            color: #f0f6fc;
+            border: 1px solid #30363d;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 10px;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            margin-left: auto;
+        }
+
+        .clear-btn-inline:hover {
+            background: #30363d;
+            border-color: #484f58;
+            transform: translateY(-1px);
+        }
+
+        .clear-btn-inline svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .token-display {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        .token-stats-inline {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .token-input, .token-output, .token-cache, .token-total, .message-count, .token-cost {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .token-input svg, .token-output svg, .token-cache svg, .token-total svg, .message-count svg, .token-cost svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .token-input {
+            background: #1f6feb20;
+            color: #58a6ff;
+        }
+
+        .token-output {
+            background: #238636;
+            color: #ffffff;
+        }
+
+        .token-cache {
+            background: #9a6700;
+            color: #ffffff;
+        }
+
+        .token-total {
+            background: #6f42c1;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .message-count {
+            background: #30363d;
+            color: #f0f6fc;
+        }
+
+        .token-cost {
+            background: #da3633;
+            color: #ffffff;
+            font-weight: 600;
         }
 
         .message {
@@ -2651,6 +2956,9 @@ const getChatUI = () => {
                         <span>Generate</span>
                     </button>
                 </form>
+                <div class="token-display" id="tokenDisplay">
+                    <!-- Token usage and controls will be populated here -->
+                </div>
             </div>
         </div>
 
@@ -2699,6 +3007,11 @@ const getChatUI = () => {
         let completedFiles = [];
         let logEntries = [];
         let activePollingTimeout = null;
+        let currentConversationId = null; // Store conversation ID for continuity
+
+        // Token tracking for current message and conversation
+        let currentMessageTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0 };
+        let conversationTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0, messages: 0 };
 
         function addMessage(content, isUser = false, sender = 'IGOR') {
             const messageDiv = document.createElement('div');
@@ -3670,7 +3983,9 @@ const getChatUI = () => {
             if (logCount) logCount.textContent = '(0)';
 
             // Start generation and get generation ID
-            fetch(\`?prompt=\${encodeURIComponent(prompt)}\`)
+            // Include conversation ID if we have one to maintain conversation history
+            const conversationParam = currentConversationId ? \`&conversation=\${currentConversationId}\` : '';
+            fetch(\`?prompt=\${encodeURIComponent(prompt)}\${conversationParam}\`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3681,6 +3996,11 @@ const getChatUI = () => {
                     }
 
                     const generationId = data.generationId;
+                    // Store conversation ID for future requests
+                    if (data.conversationId) {
+                        currentConversationId = data.conversationId;
+                        console.log('🔄 [UI] Stored conversation ID:', currentConversationId);
+                    }
                     let processedEventCount = 0;
                     let retryCount = 0;
                     let pollInterval = 100; // Start with 1 second
@@ -3900,6 +4220,41 @@ const getChatUI = () => {
                         addOrUpdateStreamingMessage(eventData.plan, eventData.isPartial);
                         break;
 
+                    case 'message_start':
+                        console.log('🔢 Token usage (message_start):', eventData.message?.usage);
+                        if (eventData.message?.usage) {
+                            currentMessageTokens = {
+                                input: eventData.message.usage.input_tokens || 0,
+                                output: eventData.message.usage.output_tokens || 0,
+                                cache_creation: eventData.message.usage.cache_creation_input_tokens || 0,
+                                cache_read: eventData.message.usage.cache_read_input_tokens || 0
+                            };
+                            updateTokenDisplay();
+                        }
+                        break;
+
+                    case 'message_delta':
+                        console.log('🔢 Token usage (message_delta):', eventData.usage);
+                        if (eventData.usage) {
+                            // Update current message tokens with final counts
+                            currentMessageTokens = {
+                                input: eventData.usage.input_tokens || currentMessageTokens.input,
+                                output: eventData.usage.output_tokens || currentMessageTokens.output,
+                                cache_creation: eventData.usage.cache_creation_input_tokens || currentMessageTokens.cache_creation,
+                                cache_read: eventData.usage.cache_read_input_tokens || currentMessageTokens.cache_read
+                            };
+
+                            // Add to conversation totals
+                            conversationTokens.input += currentMessageTokens.input;
+                            conversationTokens.output += currentMessageTokens.output;
+                            conversationTokens.cache_creation += currentMessageTokens.cache_creation;
+                            conversationTokens.cache_read += currentMessageTokens.cache_read;
+                            conversationTokens.messages += 1;
+
+                            updateTokenDisplay();
+                        }
+                        break;
+
                     default:
                         console.log('Unknown event type:', eventType, eventData);
                 }
@@ -3914,6 +4269,10 @@ const getChatUI = () => {
 
             // Add user message
             addMessage(prompt, true);
+
+            // Reset current message token counter for new generation
+            currentMessageTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0 };
+            updateTokenDisplay();
 
             // Clear input and show loading
             promptInput.value = '';
@@ -3984,6 +4343,103 @@ const getChatUI = () => {
         // Make switchToTab globally accessible
         window.switchToTab = switchToTab;
 
+                // Clear conversation handler function
+        function clearConversationHandler() {
+            if (currentConversationId) {
+                // Clear conversation on server
+                fetch('?clear=' + currentConversationId)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('🗑️ [UI] Cleared conversation:', data);
+                        currentConversationId = null;
+
+                        // Reset token counters
+                        currentMessageTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0 };
+                        conversationTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0, messages: 0 };
+
+                        updateTokenDisplay();
+
+                        // Clear chat area
+                        const chatArea = document.getElementById('chatArea');
+                        if (chatArea) {
+                            chatArea.innerHTML = '';
+                        }
+
+                        // Add welcome message
+                        addMessage('Conversation cleared. Starting a new chat session!', false, 'SYSTEM');
+                    })
+                    .catch(error => {
+                        console.error('Error clearing conversation:', error);
+                        addMessage('Error clearing conversation. Please refresh the page.', false, 'ERROR');
+                    });
+            } else {
+                // Just clear the UI if no conversation
+                const chatArea = document.getElementById('chatArea');
+                if (chatArea) {
+                    chatArea.innerHTML = '';
+                }
+
+                // Reset token counters
+                currentMessageTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0 };
+                conversationTokens = { input: 0, output: 0, cache_creation: 0, cache_read: 0, messages: 0 };
+                updateTokenDisplay();
+
+                addMessage('Ready to start a new conversation!', false, 'SYSTEM');
+            }
+        }
+
+
+
+                        // Function to update token usage display
+        function updateTokenDisplay() {
+            const tokenDisplay = document.getElementById('tokenDisplay');
+            if (tokenDisplay) {
+                const conversationTotal = conversationTokens.input + conversationTokens.output;
+
+                // Calculate costs based on Claude Sonnet 4 pricing
+                const inputCost = (conversationTokens.input / 1000000) * 3; // $3/MTok
+                const outputCost = (conversationTokens.output / 1000000) * 15; // $15/MTok
+                const cacheCost = (conversationTokens.cache_read / 1000000) * 0.30; // $0.30/MTok
+                const totalCost = inputCost + outputCost + cacheCost;
+
+                                let html = '<div class="token-stats-inline">';
+                html += '<span class="token-input" title="Input tokens ($3/MTok)"><i data-lucide="arrow-down"></i> ' + conversationTokens.input + '</span>';
+                html += '<span class="token-output" title="Output tokens ($15/MTok)"><i data-lucide="arrow-up"></i> ' + conversationTokens.output + '</span>';
+                if (conversationTokens.cache_read > 0) {
+                    html += '<span class="token-cache" title="Cache read tokens ($0.30/MTok)"><i data-lucide="database"></i> ' + conversationTokens.cache_read + '</span>';
+                }
+                html += '<span class="token-total" title="Total tokens"><i data-lucide="hash"></i> ' + conversationTotal + '</span>';
+                html += '<span class="message-count" title="Messages in conversation"><i data-lucide="message-circle"></i> ' + conversationTokens.messages + '</span>';
+
+                // Add cost display
+                if (totalCost > 0) {
+                    const costFormatted = totalCost < 0.01 ? '<$0.01' : '$' + totalCost.toFixed(totalCost < 0.1 ? 3 : 2);
+                    html += '<span class="token-cost" title="Estimated cost (Claude Sonnet 4)"><i data-lucide="dollar-sign"></i> ' + costFormatted + '</span>';
+                }
+
+                // Add new chat button
+                html += '<button class="clear-btn-inline" id="clearConversationBtn" title="Start a new conversation">';
+                html += '<i data-lucide="refresh-cw"></i>';
+                html += '</button>';
+
+                html += '</div>';
+
+                                tokenDisplay.innerHTML = html;
+
+                // Recreate icons after updating HTML
+                lucide.createIcons();
+
+                // Reattach event listener for the new chat button
+                const clearBtn = document.getElementById('clearConversationBtn');
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', clearConversationHandler);
+                }
+            }
+        }
+
+        // Initial token display
+        updateTokenDisplay();
+
         // Focus input on load
         promptInput.focus();
 
@@ -4004,9 +4460,98 @@ const getChatUI = () => {
   `;
 };
 
+export const POST: APIRoute = async ({ request }) => {
+  const startTime = Date.now();
+  console.log('🌟 === IGOR\'s Backdoor Activated (POST) ===');
+  cleanupEmptyConversations();
+  logConversationStats();
+
+  try {
+    const body = await request.json();
+    const { prompt, conversationId, clear } = body;
+
+    // Handle clear conversation request
+    if (clear) {
+      const cleared = clearConversation(clear);
+      return new Response(JSON.stringify({
+        success: cleared,
+        message: cleared ? 'Conversation cleared' : 'Conversation not found',
+        conversationId: clear,
+        timestamp: new Date().toISOString()
+      }), {
+        status: cleared ? 200 : 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+
+    if (!prompt) {
+      return new Response(JSON.stringify({
+        error: 'Missing prompt in request body',
+        usage: 'Send POST request with JSON: { "prompt": "your-question-here", "conversationId": "optional-conversation-id" }',
+        timestamp: new Date().toISOString()
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+
+    // Start new generation with polling
+    console.log('🚀 Starting new generation with polling...');
+    const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+
+    // If no conversation ID provided, generate one now so we can return it immediately
+    // and pass the same ID to completePromptWithStreaming
+    const finalConversationId = conversationId || `conv_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+
+    console.log('🔧 [FIX] Final conversation ID for this request:', finalConversationId);
+
+    // Start generation asynchronously (don't await) with the determined conversation ID
+    completePromptWithStreaming(prompt, generationId, finalConversationId).catch((error) => {
+      console.error('Generation failed:', error);
+    });
+
+    // Return generation ID and conversation ID immediately
+    return new Response(JSON.stringify({
+      generationId,
+      conversationId: finalConversationId,
+      status: 'started',
+      message: 'Generation started, use the generationId to poll for updates',
+      timestamp: new Date().toISOString()
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('💥 ERROR in Igor\'s backdoor (POST) after', duration, 'ms:', error);
+
+    return new Response(JSON.stringify({
+      error: 'Invalid request',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString(),
+      duration: duration
+    }), {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+};
+
 export const GET: APIRoute = async ({ url }) => {
   const startTime = Date.now();
   console.log('🌟 === IGOR\'s Backdoor Activated (AI SDK Version) ===');
+  cleanupEmptyConversations();
+  logConversationStats();
 
   try {
     // Check if UI mode is requested
@@ -4050,15 +4595,88 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    // If not polling, check for prompt parameter
+    // Check if this is a clear conversation request
+    const clearConversationId = url.searchParams.get('clear');
+    if (clearConversationId) {
+      if (clearConversationId === 'all') {
+        // Clear all conversations
+        const count = conversations.size;
+        conversations.clear();
+        console.log('🗑️ [CONVERSATION] Cleared ALL conversations:', count);
+        return new Response(JSON.stringify({
+          success: true,
+          message: `Cleared all ${count} conversations`,
+          conversationsCleared: count,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
+      } else {
+        // Clear specific conversation
+        const cleared = clearConversation(clearConversationId);
+        return new Response(JSON.stringify({
+          success: cleared,
+          message: cleared ? 'Conversation cleared' : 'Conversation not found',
+          conversationId: clearConversationId,
+          timestamp: new Date().toISOString()
+        }), {
+          status: cleared ? 200 : 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
+      }
+    }
+
+    // Check if this is a get conversation request
+    const getConversationId = url.searchParams.get('conversation_history');
+    if (getConversationId) {
+      const conversation = conversations.get(getConversationId);
+      if (!conversation) {
+        return new Response(JSON.stringify({
+          error: 'Conversation not found',
+          conversationId: getConversationId,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
+      }
+
+      return new Response(JSON.stringify({
+        conversationId: conversation.id,
+        messages: conversation.messages,
+        messageCount: conversation.messages.length,
+        createdAt: new Date(conversation.createdAt).toISOString(),
+        lastActivity: new Date(conversation.lastActivity).toISOString(),
+        timestamp: new Date().toISOString()
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+
+    // If not polling or clearing, check for prompt parameter
     const prompt = url.searchParams.get('prompt');
-    console.log('📝 Received prompt:', prompt);
+    const conversationId = url.searchParams.get('conversation');
+    console.log('📝 Received prompt:', prompt, 'for conversation:', conversationId);
 
     if (!prompt) {
       console.log('❌ No prompt provided');
       return new Response(JSON.stringify({
         error: 'Missing prompt parameter',
-        usage: 'Add ?prompt=your-question-here to the URL',
+        usage: 'Add ?prompt=your-question-here to the URL. Optional: &conversation=conversation-id to continue a conversation, &clear=conversation-id to clear a conversation, &clear=all to clear all conversations, &conversation_history=conversation-id to get conversation history',
         timestamp: new Date().toISOString()
       }), {
         status: 400,
@@ -4072,14 +4690,21 @@ export const GET: APIRoute = async ({ url }) => {
     console.log('🚀 Starting new generation with polling...');
     const generationId = `gen_${Date.now()}_${Math.random().toString(36).substring(2)}`;
 
-    // Start generation asynchronously (don't await)
-    completePromptWithStreaming(prompt, generationId).catch((error) => {
+    // If no conversation ID provided, generate one now so we can return it immediately
+    // and pass the same ID to completePromptWithStreaming
+    const finalConversationId = conversationId || `conv_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+
+    console.log('🔧 [FIX] Final conversation ID for this request:', finalConversationId);
+
+    // Start generation asynchronously (don't await) with the determined conversation ID
+    completePromptWithStreaming(prompt, generationId, finalConversationId).catch((error) => {
       console.error('Generation failed:', error);
     });
 
-    // Return generation ID immediately
+    // Return generation ID and conversation ID immediately
     return new Response(JSON.stringify({
       generationId,
+      conversationId: finalConversationId,
       status: 'started',
       message: 'Generation started, use the generationId to poll for updates',
       pollUrl: `${url.pathname}?poll=${generationId}`,

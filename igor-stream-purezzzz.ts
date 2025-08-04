@@ -1199,6 +1199,7 @@ const completePromptWithStreaming = async (prompt: string, generationId: string,
     const importantFiles = [
       'src/tailwind.config.mjs',
       'integrations/cms/service.ts',
+      'src/wix-verticals/components/store/ProductList.tsx',
     ]
 
     // Recursive function to read all files and directories
@@ -1287,6 +1288,10 @@ const completePromptWithStreaming = async (prompt: string, generationId: string,
       try {
         if (!fs || !isNodeJS) {
           return `<file path="${file}" error="File system not available" />`;
+        }
+        // if file exists, read it
+        if (!fs.existsSync(file)) {
+          return '';
         }
         const content = fs.readFileSync(file, 'utf8');
         return `

@@ -1302,7 +1302,7 @@ const completePromptWithStreaming = async (prompt: string, generationId: string,
 
 
     const importantDirs = [
-      'src/wix-verticals/components/store',
+      //'src/wix-verticals/components/store',
     ]
 
     const importantDirsPromises = importantDirs.map(async (dir) => {
@@ -4797,5 +4797,4 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 };
-
 

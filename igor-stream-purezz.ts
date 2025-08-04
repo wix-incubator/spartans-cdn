@@ -1300,6 +1300,43 @@ const completePromptWithStreaming = async (prompt: string, generationId: string,
       }
     }).join('\n\n---\n\n');
 
+
+    const importantDirs = [
+      'src/wix-verticals/components/store',
+    ]
+
+    const importantDirsPromises = importantDirs.map(async (dir) => {
+      try {
+        // check if dir exists
+        if (!fs.existsSync(dir)) {
+          return;
+        }
+
+        const dirFiles = await readDirectoryRecursive(dir);
+        console.log('dirFiles', dir,dirFiles);
+        const dirFilesStringPromises = dirFiles.map(async (file) => {
+          const content = fs.readFileSync(file, 'utf8');
+          return `
+            <file path="${file}">
+              ${content}
+            </file>
+          `;
+        });
+
+        const dirFilesString = await Promise.all(dirFilesStringPromises);
+
+        return dirFilesString.join('\n\n---\n\n');
+      } catch (error) {
+        console.warn(`Warning: Could not read directory ${dir}:`, error);
+        return;
+      }
+    });
+
+    const importantDirsString = (await Promise.all(importantDirsPromises)).filter(Boolean).join('\n\n---\n\n');
+
+    console.log('importantDirsString', importantDirsString);
+
+
     const currentFiles = `
     # Current files:
 
@@ -1314,6 +1351,8 @@ ${nonUiComponents}
 Other files that you can use:
 
 ${files}
+
+${importantDirsString}
 
 you must only change these files, and nothing else
 

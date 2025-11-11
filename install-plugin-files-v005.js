@@ -76,7 +76,21 @@ function ensureDependencies() {
 
 // Ensure dependencies before loading them
 ensureDependencies();
-const AdmZip = require('adm-zip');
+
+// Try to require adm-zip from multiple locations
+let AdmZip;
+try {
+  AdmZip = require('adm-zip');
+} catch {
+  try {
+    // Try from deps directory
+    AdmZip = require(path.join(DEPS_DIR, 'node_modules', 'adm-zip'));
+  } catch (err) {
+    console.error('❌ Failed to load adm-zip module:', err.message);
+    console.error('  Tip: Try installing adm-zip globally: npm install -g adm-zip');
+    process.exit(1);
+  }
+}
 
 // Parse arguments
 const [pluginSpecifier, destDir] = process.argv.slice(2);

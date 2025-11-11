@@ -42,16 +42,27 @@ function ensureDependencies() {
       fs.mkdirSync(DEPS_DIR, { recursive: true });
     }
     
+    // Create a minimal package.json to isolate from parent project
+    const packageJsonPath = path.join(DEPS_DIR, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+      fs.writeFileSync(packageJsonPath, JSON.stringify({
+        name: 'install-plugin-files-deps',
+        version: '1.0.0',
+        private: true
+      }, null, 2));
+    }
+    
     try {
-      execSync(`cd "${DEPS_DIR}" && npm install ${REQUIRED_PACKAGES.join(' ')} --no-save --no-package-lock`, {
-        stdio: 'pipe'
-      });
+      execSync(
+        `cd "${DEPS_DIR}" && npm install ${REQUIRED_PACKAGES.join(' ')} --legacy-peer-deps --loglevel=error`, 
+        { stdio: 'inherit' }
+      );
       console.log('✅ Dependencies installed\n');
     } catch (err) {
       console.error('❌ Failed to install dependencies');
-      console.error('  Error:', err.message);
-      console.error('  Tip: Make sure npm is installed and you have internet access');
-      console.error('  You can also pre-install adm-zip globally: npm install -g adm-zip');
+      console.error('  Tip: You can pre-install adm-zip to avoid this:');
+      console.error('       npm install -g adm-zip');
+      console.error('       or: npm install adm-zip (in your project)');
       process.exit(1);
     }
   }

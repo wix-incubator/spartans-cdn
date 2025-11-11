@@ -149,10 +149,8 @@ function extractZip(zipPath, destDir) {
       
       count++;
       
-      // Log progress (first 3 files and every 10th file)
-      if (count <= 3 || count % 10 === 0) {
-        console.log('    ✓', relativePath);
-      }
+      // Log every file extracted
+      console.log('    ✓', relativePath);
     }
     
     // Move to next entry

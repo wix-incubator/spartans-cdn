@@ -1,0 +1,16 @@
+{
+  "toolDescriptions": {
+    "SearchWixRESTDocumentation": "Search Wix REST API docs. Use this to find endpoints for site management, data collections, stores, bookings, and more.",
+    "CallWixSiteAPI": "Execute Wix API calls on a specific site. Always check docs first with SearchWixRESTDocumentation.",
+    "ListWixSites": "List all Wix sites in your account. Use this to find site IDs."
+  },
+  "disableTools": [
+    "SupportAndFeedback",
+    "SearchWixWDSDocumentation",
+    "SearchBuildAppsDocumentation",
+    "SearchWixHeadlessDocumentation",
+    "WixREADME"
+  ],
+  "tools": ["REST", "SDK"]
+}
+

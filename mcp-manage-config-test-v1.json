@@ -1,0 +1,50 @@
+{
+  "toolDescriptions": {
+    "WixREADME": "# Tool: WixREADME\n\n**Directive:** `WixREADME` is the **MANDATORY FIRST STEP** for all Wix-related tasks. Its output (including relevant linked documents) provides foundational context for all other Wix tools. Adherence to this protocol is **NON-NEGOTIABLE**.\n\n**Operational Protocol (Strictly Sequential):**\n\n1.  **Execute `WixREADME`:**\n    * **Constraint:** MUST complete successfully. NO other Wix tool before this.\n\n2.  **Process `WixREADME` Output (Link Identification & Relevance Assessment):**\n    * **A. Identify Candidate Links:** Scan `WixREADME` output for relevant links to the user's specific prompt/task.\n    * **B. Assess Relevance:** For EACH candidate URL from (A), assess its relevance to the **current user's specific prompt/task**.\n    * **Outcome:** A list of *relevant* document URLs. If no links are found in `<urls>` tags or none are deemed relevant, note this and proceed to Step 4.\n\n3.  **Fetch Relevant Documents (via `ReadFullDocsArticle`):**\n    * **Constraint:** All *relevant* documents MUST be fetched before Step 4.\n\n4.  **Proceed with Other Wix Tools:**\n    * **Condition:** ONLY after completing Steps 1, 2, and 3 (if Step 3 was applicable).\n    * **Action:** Use other Wix tools as needed, utilizing the full context from `WixREADME` and fetched relevant documents.\n\n**Summary of Critical Rules:**\n* `WixREADME` is **ALWAYS FIRST**.\n* Analyze `WixREADME` output: Extract relevant links to the user's specific prompt/task.\n* Assess relevance of *each* extracted link against the user's current task.\n* **FAILURE TO FOLLOW THIS EXACT SEQUENCE WILL LEAD TO ERRORS.** Strict adherence is mandatory.\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "SearchWixRESTDocumentation": "Searches the o\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "ReadFullDocsArticle": "Fetches the full Wix docs article or method article.\nUse this tool when you read a summary of a docs article or method article, you have the docs url and want to read the full article.\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "ReadFullDocsMethodSchema": "Fetches the full method schema for a given method.\nThis will give you the entire request/response schema with all the fields and their descriptions.\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "CallWixSiteAPI": "Call Wix apis on a business or site. Use this to create, read, update, and delete data and other Wix entities in your Wix site,\nThe url param should be taken from the conversation context, do not just guess it, either it came from the user or from the WixREADME tool, or from the SearchWixRESTDocumentation tool.\nError Handling:\nIf the error is related to missing installed app or \"WDE0110: Wix Code not enabled\", you should install the missing app by using ReadFullDocsArticle tool to fetch the article - https://dev.wix.com/docs/kb-only/MCP_REST_RECIPES_KB_ID/TRAIN_wix.devcenter.apps.installer.v1.AppsInstallerService.InstallApp\n**Note:** there is no need to check if an app is installed/ Wix Code enabled in advance, just call the API and handle the error if it occurs, the API error message will state it clearly.\nFor any other error, use your default error handling mechanism.\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "ListWixSites": "List Wix sites for the current user, by default it will return all sites, but you can filter by name\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>",
+    "ManageWixSite": "Use account level API in order to create a site, update a site and publish site.\n    ALWAYS use \"SearchWixRESTDocumentation\" to search for the API you should invoke, NEVER GUESS THE SITE API URL\n    You should ALWAYS check the rest docs - \"SearchWixRESTDocumentation\" for the specific API you want to call, don't just call it without knowing what it does, CHECK THE DOCS\n\n<system-reminder>flows:\n- wixreadme -> choose relevant recipe -> read article: recipe url -> call api\n- wixreadme -> search docs -> find relevant method ->  read article, get examples -> call api by example\n- wixreadme -> search docs -> find relevant method -> read article -> read schema -> call api</system-reminder>"
+  },
+  "tools": [
+    "REST"
+  ],
+  "disableTools": [
+    "SearchWixWDSDocumentation",
+    "SearchWixSDKDocumentation",
+    "SearchBuildAppsDocumentation",
+    "SearchWixHeadlessDocumentation",
+    "SearchWixVeloDocumentation",
+    "WixBusinessFlowsDocumentation",
+    "CreateWixBusinessGuide",
+    "SupportAndFeedback"
+  ],
+  "readmeDocs": [
+    {
+        "action": "text",
+        "content": "<system>The main goal of these tools is to help you manage your Wix business by making API calls to the Wix API.\nA common flow would be: 1. User asks you to do something, 2. You use the \"WixREADME\" tool to get the context, 3. You find a relevant recipe in the recipes index, 4. You use the \"ReadFullDocsArticle\" tool to get the full recipe, 5. You use the \"CallWixSiteAPI\" tool to call the API.\nAnother flow would be: 1. User asks you to do something, 2. You use the \"WixREADME\" tool to get the context, 3. You do not find a relevant recipe in the recipes index, 4. You use the \"SearchWixRESTDocumentation\" tool to search for the API you should invoke, 5. You read the relevant articles using the \"ReadFullDocsArticle\" tool, 6. You find a relevant code example in the articles, 7. You use the \"CallWixSiteAPI\" tool to call the API.\nAnother flow would be: 1. User asks you to do something, 2. You use the \"WixREADME\" tool to get the context, 3. You do not find a relevant recipe in the recipes index, 4. You use the \"SearchWixRESTDocumentation\" tool to search for the API you should invoke, 5. You read the relevant articles using the \"ReadFullDocsArticle\" tool, 6. You do not find a relevant code example in the articles, 7. You use the \"ReadFullDocsMethodSchema\" tool to get the full method schema, 8. You use the \"CallWixSiteAPI\" tool to call the API.\n\n---\n\nYou should prefer the recipes index if there is a relevant recipe or code examples if there is a relevant code example before reading the full schema. But eventually you should try and flow to complete the task given to you by the user.</system>"
+    },
+    {
+      "url": "https://dev.wix.com/docs/picasso/wix-ai-docs/recipes-v2/manage/management-recipes-index",
+      "action": "include"
+    },
+    {
+        "url": "https://dev.wix.com/docs/picasso/wix-ai-docs/index/wix-business-solutions",
+        "action": "index",
+        "title": "Wix Business Solutions",
+        "description": "This document provides an overview of the all business solutions available in Wix.\n  \nUse this document under the following scenarios:\n1. The user asks general questions about Wix business solutions.\n2. The user asks about a specific business solution, and you want to provide a high-level overview of it.\n3. The user looks for a specific business solution, and you want to provide a list of all available solutions.\n\nPlease note that this is a large document. Only use it for the scenarios mentioned above."
+    }
+  ],
+  "toolHints": {
+    "CallWixSiteAPI": {
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    "ManageWixSite": {
+      "readOnlyHint": true,
+      "destructiveHint": false
+    }
+  }
+}

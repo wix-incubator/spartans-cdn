@@ -1,5 +1,5 @@
 (async function installAriaFlowBookmarklet() {
-  const VERSION = '2026-05-15-dev-2';
+  const VERSION = '2026-05-15-dev-3';
   const GLOBAL_KEY = '__ariaFlowBookmarklet';
   const LAUNCHER_ID = 'aria-flow-launcher';
   const MODAL_ID = 'aria-flow-modal';
@@ -76,9 +76,16 @@
       #${MODAL_ID} .header {
         border-bottom: 1px solid #eaecf0;
         background: #fcfcfd;
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        max-height: 48vh;
+        min-height: 0;
+        overflow: hidden;
       }
       #${MODAL_ID} .topbar {
         display: flex;
+        flex: 0 0 auto;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
@@ -152,8 +159,10 @@
         padding: 0 16px 12px;
         color: #344054;
         font-size: 12px;
-        max-height: min(42vh, 360px);
-        overflow: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
       }
       #${MODAL_ID} .toolset details { margin-top: 0; }
       #${MODAL_ID} .toolset summary { color: #475467; }

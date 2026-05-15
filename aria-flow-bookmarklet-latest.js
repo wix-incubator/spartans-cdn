@@ -1,5 +1,5 @@
 (async function installAriaFlowBookmarklet() {
-  const VERSION = '2026-05-15-dev-3';
+  const VERSION = '2026-05-15-dev-4';
   const GLOBAL_KEY = '__ariaFlowBookmarklet';
   const LAUNCHER_ID = 'aria-flow-launcher';
   const MODAL_ID = 'aria-flow-modal';
@@ -76,12 +76,7 @@
       #${MODAL_ID} .header {
         border-bottom: 1px solid #eaecf0;
         background: #fcfcfd;
-        display: flex;
         flex: 0 0 auto;
-        flex-direction: column;
-        max-height: 48vh;
-        min-height: 0;
-        overflow: hidden;
       }
       #${MODAL_ID} .topbar {
         display: flex;
@@ -159,13 +154,15 @@
         padding: 0 16px 12px;
         color: #344054;
         font-size: 12px;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow-y: auto;
-        overscroll-behavior: contain;
       }
       #${MODAL_ID} .toolset details { margin-top: 0; }
       #${MODAL_ID} .toolset summary { color: #475467; }
+      #${MODAL_ID} .toolset-body {
+        max-height: min(42vh, 360px);
+        overflow-y: scroll;
+        overscroll-behavior: contain;
+        padding-right: 8px;
+      }
       #${MODAL_ID} .toolset-summary {
         display: flex;
         align-items: center;
@@ -385,23 +382,25 @@
             <span class="toolset-count">${toolDefinitions.length} tools</span>
           </span>
         </summary>
-        <div class="toolset-names">${esc(names.join(', '))}</div>
-        ${toolDefinitions.map((tool) => `
-          <details class="tool-def">
-            <summary>${tool.index}. ${esc(tool.name)}</summary>
-            <div class="tool-desc">
-              ${tool.description ? renderText(tool.description) : '<span class="empty-desc">No top-level description.</span>'}
-            </div>
-            <details>
-              <summary>Parameters</summary>
-              ${renderParamList(tool.parameters)}
+        <div class="toolset-body">
+          <div class="toolset-names">${esc(names.join(', '))}</div>
+          ${toolDefinitions.map((tool) => `
+            <details class="tool-def">
+              <summary>${tool.index}. ${esc(tool.name)}</summary>
+              <div class="tool-desc">
+                ${tool.description ? renderText(tool.description) : '<span class="empty-desc">No top-level description.</span>'}
+              </div>
+              <details>
+                <summary>Parameters</summary>
+                ${renderParamList(tool.parameters)}
+              </details>
+              <details>
+                <summary>Raw parameter schema</summary>
+                <pre>${esc(JSON.stringify(tool.parameters ?? {}, null, 2))}</pre>
+              </details>
             </details>
-            <details>
-              <summary>Raw parameter schema</summary>
-              <pre>${esc(JSON.stringify(tool.parameters ?? {}, null, 2))}</pre>
-            </details>
-          </details>
-        `).join('')}
+          `).join('')}
+        </div>
       </details>
     `;
   }
@@ -610,7 +609,7 @@
     try {
       const flow = await loadFlowHtml(conversationId);
       modal.querySelector('.meta').textContent =
-        `Conversation: ${conversationId} · Invoked tools: ${flow.tools.join(', ') || 'none'} · Defined tools: ${flow.toolDefinitions.length}`;
+        `Version: ${VERSION} · Conversation: ${conversationId} · Invoked tools: ${flow.tools.join(', ') || 'none'} · Defined tools: ${flow.toolDefinitions.length}`;
       modal.querySelector('[data-toolset]').innerHTML = flow.toolDefinitionsHtml;
       content.innerHTML = flow.html || '<div class="item">No rendered messages/tools found.</div>';
       content.dataset.loaded = 'true';
